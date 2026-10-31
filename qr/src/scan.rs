@@ -640,6 +640,7 @@ fn place(
 
 /// Patterns found to fit by least squares: three finders and up to 46 alignment patterns
 const MAX_PAIRS: usize = 49;
+const MAX_RINGS: i32 = 4;
 
 /// The homography that best maps `from` to `to` in the least squares sense (DLT with h33 = 1).
 /// Coordinates are scaled first so the 8x8 normal equations stay well conditioned
@@ -712,33 +713,9 @@ fn abs64(v: f64) -> f64 {
     }
 }
 
-/// How many modules of a square pattern centred on module (cx, cy) match, sampled through `t` and
-/// shifted by (dx, dy) pixels. `dark(ring)` gives each ring's colour out to `rings`
-fn template(
-    img: &Image,
-    t: &Transform,
-    cx: f64,
-    cy: f64,
-    dx: f64,
-    dy: f64,
-    rings: i32,
-    dark: fn(i32) -> bool,
-) -> usize {
-    let mut hits = 0;
-    for my in -rings..=rings {
-        for mx in -rings..=rings {
-            let (px, py) = t.apply(cx + mx as f64, cy + my as f64);
-            hits += usize::from(
-                img.dark(round((px + dx) as f32), round((py + dy) as f32))
-                    == Some(dark(mx.abs().max(my.abs()))),
-            );
-        }
-    }
-    hits
-}
-
 /// Where the pattern centred on module (cx, cy) really is: the best match within `reach` quarter
-/// modules of where `t` puts it, if it matches well enough to trust
+/// modules of where `t` puts it, if it matches well enough to trust. `dark(ring)` gives each ring's
+/// colour out to `rings`, at most `MAX_RINGS`
 #[allow(clippy::too_many_arguments)]
 fn snap(
     img: &Image,
@@ -751,12 +728,28 @@ fn snap(
     dark: fn(i32) -> bool,
     need: usize,
 ) -> Option<(f64, f64)> {
+    // Shifting does not change where `t` puts a module: without an FPU, mapping them once per shift
+    // took over half of a read
+    let mut points = [(0.0, 0.0, false); (2 * MAX_RINGS as usize + 1).pow(2)];
+    let mut count = 0;
+    for my in -rings..=rings {
+        for mx in -rings..=rings {
+            let (px, py) = t.apply(cx + mx as f64, cy + my as f64);
+            points[count] = (px, py, dark(mx.abs().max(my.abs())));
+            count += 1;
+        }
+    }
     let step = ms / 4.0;
     let mut best = (0, f64::MAX, 0.0, 0.0);
     for j in -reach..=reach {
         for i in -reach..=reach {
             let (dx, dy) = (i as f64 * step, j as f64 * step);
-            let hits = template(img, t, cx, cy, dx, dy, rings, dark);
+            let hits = points[..count]
+                .iter()
+                .filter(|&&(px, py, want)| {
+                    img.dark(round((px + dx) as f32), round((py + dy) as f32)) == Some(want)
+                })
+                .count();
             let d = dx * dx + dy * dy;
             if hits > best.0 || (hits == best.0 && d < best.1) {
                 best = (hits, d, dx, dy);
