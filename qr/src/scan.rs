@@ -641,6 +641,9 @@ fn place(
 /// Patterns found to fit by least squares: three finders and up to 46 alignment patterns
 const MAX_PAIRS: usize = 49;
 const MAX_RINGS: i32 = 4;
+const MAX_REACH: i32 = 12;
+// Far outside any frame, and small enough that a point and a shift add without overflow
+const FIXED_LIMIT: f64 = (1 << 24) as f64;
 
 /// The homography that best maps `from` to `to` in the least squares sense (DLT with h33 = 1).
 /// Coordinates are scaled first so the 8x8 normal equations stay well conditioned
@@ -714,8 +717,8 @@ fn abs64(v: f64) -> f64 {
 }
 
 /// Where the pattern centred on module (cx, cy) really is: the best match within `reach` quarter
-/// modules of where `t` puts it, if it matches well enough to trust. `dark(ring)` gives each ring's
-/// colour out to `rings`, at most `MAX_RINGS`
+/// modules of where `t` puts it, at most `MAX_REACH`, if it matches well enough to trust.
+/// `dark(ring)` gives each ring's colour out to `rings`, at most `MAX_RINGS`
 #[allow(clippy::too_many_arguments)]
 fn snap(
     img: &Image,
@@ -728,36 +731,42 @@ fn snap(
     dark: fn(i32) -> bool,
     need: usize,
 ) -> Option<(f64, f64)> {
-    // Shifting does not change where `t` puts a module: without an FPU, mapping them once per shift
-    // took over half of a read
-    let mut points = [(0.0, 0.0, false); (2 * MAX_RINGS as usize + 1).pow(2)];
+    // Shifting does not change where `t` puts a module, so each is mapped once and the search is in
+    // 1/256 pixels: without an FPU, floats in this loop took most of a read
+    let fixed = |v: f64| (v * 256.0).clamp(-FIXED_LIMIT, FIXED_LIMIT) as i32;
+    let mut points = [(0, 0, false); (2 * MAX_RINGS as usize + 1).pow(2)];
     let mut count = 0;
     for my in -rings..=rings {
         for mx in -rings..=rings {
             let (px, py) = t.apply(cx + mx as f64, cy + my as f64);
-            points[count] = (px, py, dark(mx.abs().max(my.abs())));
+            points[count] = (fixed(px), fixed(py), dark(mx.abs().max(my.abs())));
             count += 1;
         }
     }
     let step = ms / 4.0;
-    let mut best = (0, f64::MAX, 0.0, 0.0);
+    let mut shifts = [0; 2 * MAX_REACH as usize + 1];
+    for i in -reach..=reach {
+        shifts[(i + reach) as usize] = fixed(i as f64 * step);
+    }
+    let mut best = (0, i32::MAX, 0, 0);
     for j in -reach..=reach {
+        let sy = shifts[(j + reach) as usize];
         for i in -reach..=reach {
-            let (dx, dy) = (i as f64 * step, j as f64 * step);
+            let sx = shifts[(i + reach) as usize];
             let hits = points[..count]
                 .iter()
-                .filter(|&&(px, py, want)| {
-                    img.dark(round((px + dx) as f32), round((py + dy) as f32)) == Some(want)
+                .filter(|&&(fx, fy, want)| {
+                    img.dark((fx + sx + 128) >> 8, (fy + sy + 128) >> 8) == Some(want)
                 })
                 .count();
-            let d = dx * dx + dy * dy;
+            let d = i * i + j * j;
             if hits > best.0 || (hits == best.0 && d < best.1) {
-                best = (hits, d, dx, dy);
+                best = (hits, d, i, j);
             }
         }
     }
     let (px, py) = t.apply(cx, cy);
-    (best.0 >= need).then(|| (px + best.2, py + best.3))
+    (best.0 >= need).then(|| (px + best.2 as f64 * step, py + best.3 as f64 * step))
 }
 
 /// Refits the transform to where the finders and alignment patterns really are, a few times over.
