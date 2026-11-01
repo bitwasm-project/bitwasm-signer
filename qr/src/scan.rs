@@ -576,9 +576,8 @@ fn anchors(version: usize) -> Quad {
 }
 
 /// Where the anchors fall in the image: the finder centres, and for the fourth whichever of the flat
-/// estimate and the alignment candidates fits best. Then each point is nudged while more of the
-/// known modules come out right. A real perspective is one homography, so four well-placed points
-/// sample it exactly
+/// estimate and the alignment candidates fits best. A real perspective is one homography, so four
+/// well-placed points sample it exactly
 fn place(
     img: &Image,
     f: &[Finder; 3],
@@ -614,32 +613,48 @@ fn place(
             }
         }
     }
+    (quad, best)
+}
+
+/// Nudges each point of `quad` while more of the known modules come out right, until `goal` of them do
+fn climb(
+    img: &Image,
+    version: usize,
+    ms: f64,
+    known: &[(i16, i16, bool)],
+    quad: &mut Quad,
+    best: &mut usize,
+    goal: usize,
+) {
+    let modules = anchors(version);
+    let score = |q: &Quad| fitness(img, &Transform::between(modules, *q), known);
     let mut step = ms * 2.0;
-    while step >= ms / 8.0 && best < known.len() {
+    while step >= ms / 8.0 && *best < goal {
         for _ in 0..16 {
             let mut improved = false;
             for i in 0..4 {
                 for (dx, dy) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
-                    let mut q = quad;
+                    let mut q = *quad;
                     q[i].0 += dx;
                     q[i].1 += dy;
                     let s = score(&q);
-                    if s > best {
-                        (best, quad, improved) = (s, q, true);
+                    if s > *best {
+                        (*best, *quad, improved) = (s, q, true);
                     }
                 }
             }
-            if !improved {
+            if !improved || *best >= goal {
                 break;
             }
         }
         step /= 2.0;
     }
-    (quad, best)
 }
 
 /// Patterns found to fit by least squares: three finders and up to 46 alignment patterns
 const MAX_PAIRS: usize = 49;
+// Of the fixed modules in place, to try reading before climbing further
+const ENOUGH_PERCENT: usize = 90;
 const MAX_RINGS: i32 = 4;
 const MAX_REACH: i32 = 12;
 // Far outside any frame, and small enough that a point and a shift add without overflow
@@ -1126,28 +1141,49 @@ pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut
                 if !spend(scan, PLACE) {
                     return -1;
                 }
-                let (quad, score) = place(img, f, v, &known_modules[..k]);
-                // Under 70% of the fixed modules in place means the wrong version or a wrong fit
-                if score * 10 < k * 7 {
-                    break;
-                }
-                if v >= 2 {
-                    let base = Transform::between(anchors(v), quad);
-                    if let Some(t) = spend(scan, REFIT)
-                        .then(|| refit(img, v, base, ms))
-                        .flatten()
-                        .filter(|t| fitness(img, t, &known_modules[..k]) >= score)
-                    {
-                        match attempt(img, &t, v, kind, out, scan, work) {
-                            Attempt::Read(r) => return r,
-                            Attempt::Other(o) => {
-                                version = o as i32;
-                                hint = Some((t, v));
-                                continue 'version;
+                let (mut quad, mut score) = place(img, f, v, &known_modules[..k]);
+                // From version 2 on `refit` corrects what is left, and a perfect score may never
+                // come: without an FPU, climbing to it took most of a slow read, so it waits for need
+                let enough = if v >= 2 { k * ENOUGH_PERCENT / 100 } else { k };
+                climb(
+                    img,
+                    v,
+                    ms,
+                    &known_modules[..k],
+                    &mut quad,
+                    &mut score,
+                    enough,
+                );
+                for last in [false, true] {
+                    // Under 70% of the fixed modules in place means the wrong version or a wrong fit
+                    if score * 10 < k * 7 {
+                        break 'version;
+                    }
+                    if v >= 2 {
+                        let base = Transform::between(anchors(v), quad);
+                        if let Some(t) = spend(scan, REFIT)
+                            .then(|| refit(img, v, base, ms))
+                            .flatten()
+                            .filter(|t| fitness(img, t, &known_modules[..k]) >= score)
+                        {
+                            match attempt(img, &t, v, kind, out, scan, work) {
+                                Attempt::Read(r) => return r,
+                                Attempt::Other(o) => {
+                                    version = o as i32;
+                                    hint = Some((t, v));
+                                    continue 'version;
+                                }
+                                Attempt::NoFormat | Attempt::Failed => {}
                             }
-                            Attempt::NoFormat | Attempt::Failed => {}
                         }
                     }
+                    if last || score >= k || score < enough {
+                        break;
+                    }
+                    if !spend(scan, PLACE) {
+                        return -1;
+                    }
+                    climb(img, v, ms, &known_modules[..k], &mut quad, &mut score, k);
                 }
                 // Nothing fixed sits near the far corner of a small code, so if it does not read, the
                 // fourth point is moved about by up to a module and Reed–Solomon says which is right.
