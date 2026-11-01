@@ -25,7 +25,9 @@ fn dir() -> PathBuf {
 }
 
 fn vectors() -> Vec<Vector> {
-    load("vectors.txt")
+    let mut all = load("vectors.txt");
+    all.retain(|v| v.version <= tables::MAX_VERSION);
+    all
 }
 
 fn load(name: &str) -> Vec<Vector> {
@@ -47,6 +49,49 @@ fn load(name: &str) -> Vec<Vector> {
             }
         })
         .collect()
+}
+
+/// Above `small`'s largest version the buffers would not fit: the version word must turn it away
+#[cfg(feature = "small")]
+#[test]
+fn small_turns_away_larger_codes() {
+    let mut state = Box::new(State::ZERO);
+    let mut out = vec![0u8; OUTPUT_CAP];
+    let mut seed = 5u64;
+    let larger = load("vectors.txt");
+    let larger = larger.iter().filter(|v| v.version > tables::MAX_VERSION);
+    let mut tried = 0;
+    for v in larger {
+        let (px, w, h) = draw(
+            v,
+            &Look {
+                scale: 2.0,
+                ..CLEAN
+            },
+            &mut seed,
+        );
+        if w <= bitwasm_signer_qr::MAX_WIDTH && h <= bitwasm_signer_qr::MAX_HEIGHT {
+            assert!(read(&px, w, h, Kind::Any, &mut out, &mut state) <= 0);
+            tried += 1;
+        }
+    }
+    assert!(tried > 0);
+}
+
+#[test]
+fn a_budget_of_nothing_reads_nothing() {
+    let mut state = Box::new(State::ZERO);
+    let mut out = vec![0u8; OUTPUT_CAP];
+    let mut seed = 5u64;
+    let v = vectors().into_iter().find(|v| v.version == 2).unwrap();
+    let look = Look {
+        scale: 3.0,
+        ..CLEAN
+    };
+    let (px, w, h) = draw(&v, &look, &mut seed);
+    assert!(read(&px, w, h, Kind::Any, &mut out, &mut state) > 0);
+    let none = bitwasm_signer_qr::read_within(&px, w, h, Kind::Any, &mut out, &mut state, 0);
+    assert!(none <= 0);
 }
 
 #[test]
@@ -297,6 +342,13 @@ fn read(px: &[u8], w: usize, h: usize, kind: Kind, out: &mut [u8], state: &mut S
     bitwasm_signer_qr::read(px, w, h, kind, out, state)
 }
 
+/// Whether a drawn frame is one this build accepts: `small` takes QVGA only
+fn fits(w: usize, h: usize) -> bool {
+    w <= bitwasm_signer_qr::MAX_WIDTH
+        && h <= bitwasm_signer_qr::MAX_HEIGHT
+        && w * h <= bitwasm_signer_qr::MAX_PIXELS
+}
+
 fn run(name: &str, look: impl Fn(&Vector) -> Option<Look>) -> (usize, usize, String) {
     let mut state = Box::new(State::ZERO);
     let mut out = vec![0u8; OUTPUT_CAP];
@@ -305,10 +357,7 @@ fn run(name: &str, look: impl Fn(&Vector) -> Option<Look>) -> (usize, usize, Str
     for v in vectors() {
         let Some(l) = look(&v) else { continue };
         let (px, w, h) = draw(&v, &l, &mut seed);
-        if w > bitwasm_signer_qr::MAX_WIDTH
-            || h > bitwasm_signer_qr::MAX_HEIGHT
-            || w * h > bitwasm_signer_qr::MAX_PIXELS
-        {
+        if !fits(w, h) {
             continue;
         }
         total += 1;
@@ -558,6 +607,9 @@ fn erasures_from_grey_in_an_image() {
             },
             &mut seed,
         );
+        if !fits(w, h) {
+            continue;
+        }
         total += 1;
         let r = read(&px, w, h, Kind::SeedQr, &mut out, &mut state);
         ok += usize::from(r > 0 && out[..r as usize] == v.expected[..]);
@@ -578,7 +630,7 @@ fn animated_frames_follow_one_another() {
     let mut out = vec![0u8; OUTPUT_CAP];
     let mut seed = 51u64;
     let look = Look {
-        scale: 4.0,
+        scale: if cfg!(feature = "small") { 3.0 } else { 4.0 },
         angle: 0.3,
         tilt: (0.05, -0.03),
         blur: true,
@@ -639,6 +691,9 @@ fn light_on_dark_codes_read() {
             },
             &mut seed,
         );
+        if !fits(w, h) {
+            continue;
+        }
         total += 1;
         let r = read(&px, w, h, Kind::Any, &mut out, &mut state);
         ok += usize::from(r > 0 && out[..r as usize] == v.expected[..]);

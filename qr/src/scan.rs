@@ -496,7 +496,10 @@ fn corners(a: &Finder, b: &Finder, c: &Finder) -> Option<([Finder; 3], f32)> {
 }
 
 /// Function modules of a version 40 code and the ring of quiet zone around it
+#[cfg(not(feature = "small"))]
 const MAX_KNOWN: usize = 2500;
+#[cfg(feature = "small")]
+const MAX_KNOWN: usize = 1000;
 
 /// Modules every code of this version shares: finders and their separators, the timing patterns,
 /// the alignment patterns, the dark module, and the light ring just outside, which is all that pins
@@ -987,7 +990,7 @@ impl Scan {
 /// Work allowed per read, so a frame built to look like codes that never decode costs a bounded
 /// time. An attempt costs 1, a refit about 4 attempts' worth of sampling and a placement about 10;
 /// a real code reads well within this, even after a wrong version guess
-const BUDGET: u32 = 100;
+pub const BUDGET: u32 = 100;
 const REFIT: u32 = 4;
 const PLACE: u32 = 10;
 
@@ -1046,8 +1049,15 @@ fn attempt(
 
 /// The first code that decodes: its length, 0 when no finder triple was found, -1 when one was found
 /// but nothing decoded, WRONG_KIND when it decoded to something not of `kind`
-pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut Work) -> i32 {
-    scan.budget = BUDGET;
+pub fn read(
+    img: &Image,
+    kind: Kind,
+    out: &mut [u8],
+    scan: &mut Scan,
+    work: &mut Work,
+    budget: u32,
+) -> i32 {
+    scan.budget = budget;
     // An animated code stays put between frames: the last frame's transform is tried first, and a
     // grid identical to the last one read is the same frame still on screen
     if kind == Kind::Animated && scan.track.live {
@@ -1223,5 +1233,26 @@ pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut
         -1
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_known_modules_of_every_version_fit() {
+        let mut list = [(0i16, 0i16, false); MAX_KNOWN];
+        for v in 1..=tables::MAX_VERSION {
+            assert!(known(v, &mut list) <= MAX_KNOWN);
+        }
+    }
+
+    #[test]
+    fn the_largest_version_fills_the_codeword_buffers() {
+        assert_eq!(
+            tables::raw_data_modules(tables::MAX_VERSION) / 8,
+            tables::MAX_CODEWORDS
+        );
     }
 }

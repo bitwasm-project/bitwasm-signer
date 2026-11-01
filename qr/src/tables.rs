@@ -22,11 +22,18 @@ pub const BLOCKS: [[u8; 41]; LEVELS] = [
     [0, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81],
 ];
 
-/// The largest version and side length
+/// The largest version read and its side length. Under `small`, version 15 is already about three
+/// pixels a module in a QVGA frame, and a larger code's version word simply never matches
+#[cfg(not(feature = "small"))]
 pub const MAX_VERSION: usize = 40;
+#[cfg(feature = "small")]
+pub const MAX_VERSION: usize = 15;
 pub const MAX_SIZE: usize = 17 + 4 * MAX_VERSION;
-/// Codewords in a version 40 symbol, the most any version holds
+/// Codewords in a symbol of the largest version, the most any version read holds
+#[cfg(not(feature = "small"))]
 pub const MAX_CODEWORDS: usize = 3706;
+#[cfg(feature = "small")]
+pub const MAX_CODEWORDS: usize = 655;
 
 pub const fn size(version: usize) -> usize {
     17 + 4 * version

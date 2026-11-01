@@ -4,8 +4,11 @@
 //! the buffer this module exports and reads the decoded bytes back. Nothing here depends on another
 //! QR library; the tests compare against one written by someone else.
 // Built as qr.wasm (the `module` feature, on by default), it is no_std with its own panic handler and
-// exports. Without the feature it is a plain library, for another wasm crate to link in
-#![cfg_attr(all(target_arch = "wasm32", feature = "module"), no_std)]
+// exports. Without the feature it is a plain library, for another crate to link in, bare metal too
+#![cfg_attr(
+    any(all(target_arch = "wasm32", feature = "module"), target_os = "none"),
+    no_std
+)]
 
 #[cfg(all(target_arch = "wasm32", feature = "module"))]
 #[panic_handler]
@@ -23,14 +26,26 @@ pub mod tables;
 mod exports;
 
 /// The largest frame accepted: 1280x720 either way up, as large as a camera preview needs to be
-pub const MAX_WIDTH: usize = 1280;
-pub const MAX_HEIGHT: usize = 1280;
-pub const MAX_PIXELS: usize = 1280 * 720;
+#[cfg(not(feature = "small"))]
+mod limits {
+    pub const MAX_WIDTH: usize = 1280;
+    pub const MAX_HEIGHT: usize = 1280;
+    pub const MAX_PIXELS: usize = 1280 * 720;
+    /// Version 40 numeric mode at level L, the longest output a code can produce, is 7,089 digits
+    pub const OUTPUT_CAP: usize = 7168;
+}
 
-/// Version 40 numeric mode at level L, the longest output a code can produce, is 7,089 digits
-pub const OUTPUT_CAP: usize = 7168;
+/// QVGA, for a microcontroller's camera. Version 15 numeric mode at level L is 1,250 digits
+#[cfg(feature = "small")]
+mod limits {
+    pub const MAX_WIDTH: usize = 320;
+    pub const MAX_HEIGHT: usize = 320;
+    pub const MAX_PIXELS: usize = 320 * 240;
+    pub const OUTPUT_CAP: usize = 1280;
+}
 
-pub use scan::{Kind, WRONG_KIND};
+pub use limits::*;
+pub use scan::{Kind, BUDGET, WRONG_KIND};
 
 /// Everything a read uses besides the pixels, their dark/light copy and the output, so it can be
 /// wiped in one place
@@ -62,6 +77,20 @@ impl State {
 /// not of `kind`; -2 when the size is not accepted. A light-on-dark code is tried when nothing
 /// dark-on-light reads
 pub fn read(px: &[u8], w: usize, h: usize, kind: Kind, out: &mut [u8], state: &mut State) -> i32 {
+    read_within(px, w, h, kind, out, state, BUDGET)
+}
+
+/// As `read`, with `budget` in place of `BUDGET` for each of the two tries: without an FPU, a frame
+/// that nearly reads can take many seconds at the full budget, and the next frame may read at once
+pub fn read_within(
+    px: &[u8],
+    w: usize,
+    h: usize,
+    kind: Kind,
+    out: &mut [u8],
+    state: &mut State,
+    budget: u32,
+) -> i32 {
     if w < 21 || h < 21 || w > MAX_WIDTH || h > MAX_HEIGHT || w * h > px.len().min(MAX_PIXELS) {
         return -2;
     }
@@ -73,12 +102,12 @@ pub fn read(px: &[u8], w: usize, h: usize, kind: Kind, out: &mut [u8], state: &m
         h: h as i32,
         inverted: false,
     };
-    let r = scan::read(&img, kind, out, &mut state.scan, &mut state.work);
+    let r = scan::read(&img, kind, out, &mut state.scan, &mut state.work, budget);
     // A light-on-dark code can still show something finder-like the right way up, so -1 does not
     // rule it out; a read or a code of the wrong kind does
     if r > 0 || r == WRONG_KIND {
         return r;
     }
     img.inverted = true;
-    scan::read(&img, kind, out, &mut state.scan, &mut state.work)
+    scan::read(&img, kind, out, &mut state.scan, &mut state.work, budget)
 }
