@@ -132,7 +132,7 @@ function showError(msg) {
   document.getElementById("out").replaceChildren(d);
 }
 
-/* The camera: read with the same quirc the device runs (qr.wasm), then hand the parts to parser.wasm */
+/* The camera: read with the same reader the device runs (qr.wasm), then hand the parts to parser.wasm */
 async function camera() {
   const video = document.getElementById("video"), stat = document.getElementById("camstat");
   const canvas = document.createElement("canvas");
@@ -198,7 +198,7 @@ async function camera() {
       box.style.display = "block";
       if (!qr.qr_init(W, H)) { stat.textContent = "the QR decoder would not start"; return; }
       stat.textContent = `looking at the middle ${W}x${H} of ${video.videoWidth}x${video.videoHeight}`
-        + ` (quirc${bd ? " + built-in" : ""}${self.jsQR ? " + jsQR" : ""})`;
+        + ` (qr.wasm${bd ? " + built-in" : ""}${self.jsQR ? " + jsQR" : ""})`;
     }
     /* Alternate between the centre at native scale, for a QR that lands small, and the whole frame
      * scaled down, for one that overflows the box */
@@ -207,9 +207,9 @@ async function camera() {
     box.style.display = (mode & 1) ? "block" : "none";
     mode++;
 
-    /* quirc first, the same one the device runs, then the browser's own, then jsQR. Only parser.wasm
-     * is anywhere near a key, so the transport is free to use whatever reads. Which one succeeded is
-     * reported, which also shows up the conditions quirc struggles with */
+    /* qr.wasm first, the same reader the device runs, then the browser's own, then jsQR. Only
+     * parser.wasm is anywhere near a key, so the transport is free to use whatever reads. Which one
+     * succeeded is reported, which also shows up the conditions qr.wasm struggles with */
     const rgba = ctx.getImageData(0, 0, W, H);
     let text = null, how = (mode & 1) ? "centre" : "whole frame", detail = "";
     {
@@ -220,10 +220,9 @@ async function camera() {
       const n = qr.qr_decode();
       if (n > 0) {
         text = new TextDecoder().decode(new Uint8Array(qr.memory.buffer, qr.qr_output(), n));
-        how += "・quirc";
+        how += "・qr.wasm";
       } else if (n < 0) {
-        const px = qr.qr_last_px(), cells = qr.qr_last_cells();
-        detail = `quirc: ${px}px / ${cells} modules = ${(px / (cells || 1)).toFixed(1)}px per module`;
+        detail = "qr.wasm found a code but could not read it";
       }
     }
     if (text === null && bd) {
