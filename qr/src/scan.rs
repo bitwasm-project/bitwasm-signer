@@ -648,6 +648,10 @@ fn climb(
             }
         }
         step /= 2.0;
+        // A wrong version rarely climbs out of this, and each one costs seconds without an FPU
+        if step < ms && *best * 10 < known.len() * 7 {
+            return;
+        }
     }
 }
 
