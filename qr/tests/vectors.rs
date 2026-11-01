@@ -78,6 +78,35 @@ fn small_turns_away_larger_codes() {
     assert!(tried > 0);
 }
 
+/// A tracked code that moved must still read at the small budget a microcontroller uses: trying the
+/// old position must not use up what searching for the new one needs
+#[test]
+fn a_moved_animated_code_reads_at_a_small_budget() {
+    let frames = load("animated.txt");
+    let mut state = Box::new(State::ZERO);
+    let mut out = vec![0u8; OUTPUT_CAP];
+    let mut seed = 51u64;
+    let scale = if cfg!(feature = "small") { 3.0 } else { 4.0 };
+    let first = Look {
+        scale,
+        angle: 0.0,
+        ..CLEAN
+    };
+    let moved = Look {
+        scale,
+        angle: if cfg!(feature = "small") { 0.2 } else { 0.5 },
+        ..CLEAN
+    };
+    let budget = 15;
+    let (px, w, h) = draw(&frames[0], &first, &mut seed);
+    let r = bitwasm_signer_qr::read_within(&px, w, h, Kind::Animated, &mut out, &mut state, budget);
+    assert!(r > 0, "first sighting: {r}");
+    let (px, w, h) = draw(&frames[1], &moved, &mut seed);
+    let r = bitwasm_signer_qr::read_within(&px, w, h, Kind::Animated, &mut out, &mut state, budget);
+    assert!(r > 0, "after moving: {r}");
+    assert_eq!(&out[..r as usize], &frames[1].expected[..]);
+}
+
 #[test]
 fn a_budget_of_nothing_reads_nothing() {
     let mut state = Box::new(State::ZERO);

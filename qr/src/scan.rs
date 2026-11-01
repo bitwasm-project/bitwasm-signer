@@ -964,7 +964,11 @@ struct Track {
     live: bool,
     /// The output still holds that frame's bytes: any later decode, of any kind, may overwrite them
     held: bool,
+    /// Frames in a row that did not read through `t`
+    misses: u8,
 }
+
+const TRACK_MISSES: u8 = 2;
 
 const NO_TRACK: Track = Track {
     t: Transform([0.0; 9]),
@@ -972,6 +976,7 @@ const NO_TRACK: Track = Track {
     len: 0,
     live: false,
     held: false,
+    misses: 0,
 };
 
 pub struct Scan {
@@ -1061,6 +1066,7 @@ fn attempt(
                     len: d.len,
                     live: true,
                     held: true,
+                    misses: 0,
                 };
                 scan.prev[..n * n].copy_from_slice(&scan.grid[..n * n]);
             }
@@ -1086,11 +1092,13 @@ pub fn read(
     scan.budget = budget;
     // An animated code stays put between frames: the last frame's transform is tried first, and a
     // grid identical to the last one read is the same frame still on screen
-    if kind == Kind::Animated && scan.track.live {
+    // Only the first try of a frame: the inverted one would count the same miss again
+    if kind == Kind::Animated && scan.track.live && !img.inverted {
         let track = scan.track;
         let n = size(track.version);
         sample(img, &track.t, n, &mut scan.grid, &mut scan.margin);
         if track.held && scan.grid[..n * n] == scan.prev[..n * n] {
+            scan.track.misses = 0;
             scan.tracked += 1;
             return track.len as i32;
         }
@@ -1111,6 +1119,12 @@ pub fn read(
                 }
             }
         }
+        // The code moved or left. This is bounded work on top of the search, which needs its whole
+        // budget: at a small one, it could otherwise never read a code again. Two misses in a row
+        // end the tracking, as one is often a screen caught changing frames
+        scan.budget = budget;
+        scan.track.misses += 1;
+        scan.track.live = scan.track.misses < TRACK_MISSES;
     }
 
     let count = find_finders(img, &mut scan.finders);
