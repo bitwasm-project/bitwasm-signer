@@ -47,23 +47,31 @@ impl Image<'_> {
         Some(if before == after { before } else { here })
     }
 
-    /// The colour of the module whose corners `t` maps from (mx, my) to (mx + 1, my + 1), from the
-    /// mean grey of five points across it, and how far that mean sits from the threshold
-    fn module(&self, t: &Transform, mx: f64, my: f64) -> (bool, u8) {
+    /// The colour of module (mx, my), from the mean grey of five points across it, and how far that
+    /// mean sits from the threshold. `nodes` is the grid from `sample`
+    fn module(&self, nodes: &[(i32, i32)], side: usize, mx: usize, my: usize) -> (bool, u8) {
+        // In sixteenths of a module: 5, 8 and 11 are the points at about 0.3, 0.5 and 0.7
+        let at = |ox: usize, oy: usize| {
+            let (ux, uy) = (mx * 16 + ox, my * 16 + oy);
+            let (i, j) = (ux / NODE_CELL, uy / NODE_CELL);
+            let (s, u) = ((ux % NODE_CELL) as i32, (uy % NODE_CELL) as i32);
+            let (rs, ru) = (NODE_CELL as i32 - s, NODE_CELL as i32 - u);
+            let n = j * side + i;
+            let (a, b, c, d) = (nodes[n], nodes[n + 1], nodes[n + side], nodes[n + side + 1]);
+            let lerp = |a: i32, b: i32, c: i32, d: i32| {
+                ((a * rs + b * s) * ru + (c * rs + d * s) * u + NODE_ROUND) >> NODE_SHIFT
+            };
+            (lerp(a.0, b.0, c.0, d.0), lerp(a.1, b.1, c.1, d.1))
+        };
         let mut sum = 0u32;
-        for (ox, oy) in [(0.5, 0.5), (0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)] {
-            let (px, py) = t.apply(mx + ox, my + oy);
-            let (x, y) = (round(px as f32), round(py as f32));
+        for (ox, oy) in [(8, 8), (5, 5), (11, 5), (5, 11), (11, 11)] {
+            let (x, y) = at(ox, oy);
             if x < 0 || y < 0 || x >= self.w || y >= self.h {
                 return (false, 0);
             }
             sum += self.grey[(y * self.w + x) as usize] as u32;
         }
-        let (px, py) = t.apply(mx + 0.5, my + 0.5);
-        let (x, y) = (
-            round(px as f32).clamp(0, self.w - 1),
-            round(py as f32).clamp(0, self.h - 1),
-        );
+        let (x, y) = at(8, 8);
         let bw = (self.w as usize).div_ceil(BLOCK);
         let threshold = self.thresholds[y as usize / BLOCK * bw + x as usize / BLOCK] as i32;
         let mean = (sum / 5) as i32;
@@ -496,7 +504,10 @@ fn corners(a: &Finder, b: &Finder, c: &Finder) -> Option<([Finder; 3], f32)> {
 }
 
 /// Function modules of a version 40 code and the ring of quiet zone around it
+#[cfg(not(feature = "small"))]
 const MAX_KNOWN: usize = 2500;
+#[cfg(feature = "small")]
+const MAX_KNOWN: usize = 1000;
 
 /// Modules every code of this version shares: finders and their separators, the timing patterns,
 /// the alignment patterns, the dark module, and the light ring just outside, which is all that pins
@@ -576,9 +587,8 @@ fn anchors(version: usize) -> Quad {
 }
 
 /// Where the anchors fall in the image: the finder centres, and for the fourth whichever of the flat
-/// estimate and the alignment candidates fits best. Then each point is nudged while more of the
-/// known modules come out right. A real perspective is one homography, so four well-placed points
-/// sample it exactly
+/// estimate and the alignment candidates fits best. A real perspective is one homography, so four
+/// well-placed points sample it exactly
 fn place(
     img: &Image,
     f: &[Finder; 3],
@@ -614,32 +624,64 @@ fn place(
             }
         }
     }
+    (quad, best)
+}
+
+/// Nudges each point of `quad` while more of the known modules come out right, until `goal` of them do
+fn climb(
+    img: &Image,
+    version: usize,
+    ms: f64,
+    known: &[(i16, i16, bool)],
+    quad: &mut Quad,
+    best: &mut usize,
+    goal: usize,
+) {
+    let modules = anchors(version);
+    let score = |q: &Quad| fitness(img, &Transform::between(modules, *q), known);
     let mut step = ms * 2.0;
-    while step >= ms / 8.0 && best < known.len() {
+    while step >= ms / 8.0 && *best < goal {
         for _ in 0..16 {
             let mut improved = false;
             for i in 0..4 {
                 for (dx, dy) in [(step, 0.0), (-step, 0.0), (0.0, step), (0.0, -step)] {
-                    let mut q = quad;
+                    let mut q = *quad;
                     q[i].0 += dx;
                     q[i].1 += dy;
                     let s = score(&q);
-                    if s > best {
-                        (best, quad, improved) = (s, q, true);
+                    if s > *best {
+                        (*best, *quad, improved) = (s, q, true);
                     }
                 }
             }
-            if !improved {
+            if !improved || *best >= goal {
                 break;
             }
         }
         step /= 2.0;
+        // A wrong version rarely climbs out of this, and each one costs seconds without an FPU
+        if step < ms && *best * 10 < known.len() * 7 {
+            return;
+        }
     }
-    (quad, best)
 }
 
 /// Patterns found to fit by least squares: three finders and up to 46 alignment patterns
 const MAX_PAIRS: usize = 49;
+/// Modules between the points of `sample`'s grid, which holds pixels in sixteenths
+const NODE_STEP: usize = 8;
+const NODE_CELL: usize = NODE_STEP * 16;
+const MAX_NODES: usize = tables::MAX_SIZE / NODE_STEP + 2;
+const NODE_SHIFT: u32 = 2 * NODE_CELL.trailing_zeros() + 4;
+const NODE_ROUND: i32 = 1 << (NODE_SHIFT - 1);
+// 4096 pixels in sixteenths times the 2^14 of the weights stays within an i32, and is outside any frame
+const NODE_LIMIT: f64 = (1 << 16) as f64;
+// Of the fixed modules in place, to try reading before climbing further
+const ENOUGH_PERCENT: usize = 90;
+const MAX_RINGS: i32 = 4;
+const MAX_REACH: i32 = 12;
+// Far outside any frame, and small enough that a point and a shift add without overflow
+const FIXED_LIMIT: f64 = (1 << 24) as f64;
 
 /// The homography that best maps `from` to `to` in the least squares sense (DLT with h33 = 1).
 /// Coordinates are scaled first so the 8x8 normal equations stay well conditioned
@@ -712,33 +754,9 @@ fn abs64(v: f64) -> f64 {
     }
 }
 
-/// How many modules of a square pattern centred on module (cx, cy) match, sampled through `t` and
-/// shifted by (dx, dy) pixels. `dark(ring)` gives each ring's colour out to `rings`
-fn template(
-    img: &Image,
-    t: &Transform,
-    cx: f64,
-    cy: f64,
-    dx: f64,
-    dy: f64,
-    rings: i32,
-    dark: fn(i32) -> bool,
-) -> usize {
-    let mut hits = 0;
-    for my in -rings..=rings {
-        for mx in -rings..=rings {
-            let (px, py) = t.apply(cx + mx as f64, cy + my as f64);
-            hits += usize::from(
-                img.dark(round((px + dx) as f32), round((py + dy) as f32))
-                    == Some(dark(mx.abs().max(my.abs()))),
-            );
-        }
-    }
-    hits
-}
-
 /// Where the pattern centred on module (cx, cy) really is: the best match within `reach` quarter
-/// modules of where `t` puts it, if it matches well enough to trust
+/// modules of where `t` puts it, at most `MAX_REACH`, if it matches well enough to trust.
+/// `dark(ring)` gives each ring's colour out to `rings`, at most `MAX_RINGS`
 #[allow(clippy::too_many_arguments)]
 fn snap(
     img: &Image,
@@ -751,20 +769,42 @@ fn snap(
     dark: fn(i32) -> bool,
     need: usize,
 ) -> Option<(f64, f64)> {
+    // Shifting does not change where `t` puts a module, so each is mapped once and the search is in
+    // 1/256 pixels: without an FPU, floats in this loop took most of a read
+    let fixed = |v: f64| (v * 256.0).clamp(-FIXED_LIMIT, FIXED_LIMIT) as i32;
+    let mut points = [(0, 0, false); (2 * MAX_RINGS as usize + 1).pow(2)];
+    let mut count = 0;
+    for my in -rings..=rings {
+        for mx in -rings..=rings {
+            let (px, py) = t.apply(cx + mx as f64, cy + my as f64);
+            points[count] = (fixed(px), fixed(py), dark(mx.abs().max(my.abs())));
+            count += 1;
+        }
+    }
     let step = ms / 4.0;
-    let mut best = (0, f64::MAX, 0.0, 0.0);
+    let mut shifts = [0; 2 * MAX_REACH as usize + 1];
+    for i in -reach..=reach {
+        shifts[(i + reach) as usize] = fixed(i as f64 * step);
+    }
+    let mut best = (0, i32::MAX, 0, 0);
     for j in -reach..=reach {
+        let sy = shifts[(j + reach) as usize];
         for i in -reach..=reach {
-            let (dx, dy) = (i as f64 * step, j as f64 * step);
-            let hits = template(img, t, cx, cy, dx, dy, rings, dark);
-            let d = dx * dx + dy * dy;
+            let sx = shifts[(i + reach) as usize];
+            let hits = points[..count]
+                .iter()
+                .filter(|&&(fx, fy, want)| {
+                    img.dark((fx + sx + 128) >> 8, (fy + sy + 128) >> 8) == Some(want)
+                })
+                .count();
+            let d = i * i + j * j;
             if hits > best.0 || (hits == best.0 && d < best.1) {
-                best = (hits, d, dx, dy);
+                best = (hits, d, i, j);
             }
         }
     }
     let (px, py) = t.apply(cx, cy);
-    (best.0 >= need).then(|| (px + best.2, py + best.3))
+    (best.0 >= need).then(|| (px + best.2 as f64 * step, py + best.3 as f64 * step))
 }
 
 /// Refits the transform to where the finders and alignment patterns really are, a few times over.
@@ -804,11 +844,21 @@ fn refit(img: &Image, version: usize, mut t: Transform, ms: f64) -> Option<Trans
     Some(t)
 }
 
-/// Every module's colour into `grid` and how sure that is into `margin`
+/// Every module's colour into `grid` and how sure that is into `margin`. Only a coarse grid goes
+/// through `t`: without an FPU, mapping six points of every module took most of an animated frame
 fn sample(img: &Image, t: &Transform, n: usize, grid: &mut [u8], margin: &mut [u8]) {
+    let side = n / NODE_STEP + 2;
+    let mut nodes = [(0i32, 0i32); MAX_NODES * MAX_NODES];
+    let fixed = |v: f64| (v * 16.0).clamp(-NODE_LIMIT, NODE_LIMIT) as i32;
+    for j in 0..side {
+        for i in 0..side {
+            let (px, py) = t.apply((i * NODE_STEP) as f64, (j * NODE_STEP) as f64);
+            nodes[j * side + i] = (fixed(px), fixed(py));
+        }
+    }
     for y in 0..n {
         for x in 0..n {
-            let (dark, m) = img.module(t, x as f64, y as f64);
+            let (dark, m) = img.module(&nodes[..side * side], side, x, y);
             grid[y * n + x] = u8::from(dark);
             margin[y * n + x] = m;
         }
@@ -914,7 +964,11 @@ struct Track {
     live: bool,
     /// The output still holds that frame's bytes: any later decode, of any kind, may overwrite them
     held: bool,
+    /// Frames in a row that did not read through `t`
+    misses: u8,
 }
+
+const TRACK_MISSES: u8 = 2;
 
 const NO_TRACK: Track = Track {
     t: Transform([0.0; 9]),
@@ -922,6 +976,7 @@ const NO_TRACK: Track = Track {
     len: 0,
     live: false,
     held: false,
+    misses: 0,
 };
 
 pub struct Scan {
@@ -966,7 +1021,7 @@ impl Scan {
 /// Work allowed per read, so a frame built to look like codes that never decode costs a bounded
 /// time. An attempt costs 1, a refit about 4 attempts' worth of sampling and a placement about 10;
 /// a real code reads well within this, even after a wrong version guess
-const BUDGET: u32 = 100;
+pub const BUDGET: u32 = 100;
 const REFIT: u32 = 4;
 const PLACE: u32 = 10;
 
@@ -1011,6 +1066,7 @@ fn attempt(
                     len: d.len,
                     live: true,
                     held: true,
+                    misses: 0,
                 };
                 scan.prev[..n * n].copy_from_slice(&scan.grid[..n * n]);
             }
@@ -1025,15 +1081,24 @@ fn attempt(
 
 /// The first code that decodes: its length, 0 when no finder triple was found, -1 when one was found
 /// but nothing decoded, WRONG_KIND when it decoded to something not of `kind`
-pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut Work) -> i32 {
-    scan.budget = BUDGET;
+pub fn read(
+    img: &Image,
+    kind: Kind,
+    out: &mut [u8],
+    scan: &mut Scan,
+    work: &mut Work,
+    budget: u32,
+) -> i32 {
+    scan.budget = budget;
     // An animated code stays put between frames: the last frame's transform is tried first, and a
     // grid identical to the last one read is the same frame still on screen
-    if kind == Kind::Animated && scan.track.live {
+    // Only the first try of a frame: the inverted one would count the same miss again
+    if kind == Kind::Animated && scan.track.live && !img.inverted {
         let track = scan.track;
         let n = size(track.version);
         sample(img, &track.t, n, &mut scan.grid, &mut scan.margin);
         if track.held && scan.grid[..n * n] == scan.prev[..n * n] {
+            scan.track.misses = 0;
             scan.tracked += 1;
             return track.len as i32;
         }
@@ -1054,6 +1119,12 @@ pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut
                 }
             }
         }
+        // The code moved or left. This is bounded work on top of the search, which needs its whole
+        // budget: at a small one, it could otherwise never read a code again. Two misses in a row
+        // end the tracking, as one is often a screen caught changing frames
+        scan.budget = budget;
+        scan.track.misses += 1;
+        scan.track.live = scan.track.misses < TRACK_MISSES;
     }
 
     let count = find_finders(img, &mut scan.finders);
@@ -1124,28 +1195,49 @@ pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut
                 if !spend(scan, PLACE) {
                     return -1;
                 }
-                let (quad, score) = place(img, f, v, &known_modules[..k]);
-                // Under 70% of the fixed modules in place means the wrong version or a wrong fit
-                if score * 10 < k * 7 {
-                    break;
-                }
-                if v >= 2 {
-                    let base = Transform::between(anchors(v), quad);
-                    if let Some(t) = spend(scan, REFIT)
-                        .then(|| refit(img, v, base, ms))
-                        .flatten()
-                        .filter(|t| fitness(img, t, &known_modules[..k]) >= score)
-                    {
-                        match attempt(img, &t, v, kind, out, scan, work) {
-                            Attempt::Read(r) => return r,
-                            Attempt::Other(o) => {
-                                version = o as i32;
-                                hint = Some((t, v));
-                                continue 'version;
+                let (mut quad, mut score) = place(img, f, v, &known_modules[..k]);
+                // From version 2 on `refit` corrects what is left, and a perfect score may never
+                // come: without an FPU, climbing to it took most of a slow read, so it waits for need
+                let enough = if v >= 2 { k * ENOUGH_PERCENT / 100 } else { k };
+                climb(
+                    img,
+                    v,
+                    ms,
+                    &known_modules[..k],
+                    &mut quad,
+                    &mut score,
+                    enough,
+                );
+                for last in [false, true] {
+                    // Under 70% of the fixed modules in place means the wrong version or a wrong fit
+                    if score * 10 < k * 7 {
+                        break 'version;
+                    }
+                    if v >= 2 {
+                        let base = Transform::between(anchors(v), quad);
+                        if let Some(t) = spend(scan, REFIT)
+                            .then(|| refit(img, v, base, ms))
+                            .flatten()
+                            .filter(|t| fitness(img, t, &known_modules[..k]) >= score)
+                        {
+                            match attempt(img, &t, v, kind, out, scan, work) {
+                                Attempt::Read(r) => return r,
+                                Attempt::Other(o) => {
+                                    version = o as i32;
+                                    hint = Some((t, v));
+                                    continue 'version;
+                                }
+                                Attempt::NoFormat | Attempt::Failed => {}
                             }
-                            Attempt::NoFormat | Attempt::Failed => {}
                         }
                     }
+                    if last || score >= k || score < enough {
+                        break;
+                    }
+                    if !spend(scan, PLACE) {
+                        return -1;
+                    }
+                    climb(img, v, ms, &known_modules[..k], &mut quad, &mut score, k);
                 }
                 // Nothing fixed sits near the far corner of a small code, so if it does not read, the
                 // fourth point is moved about by up to a module and Reed–Solomon says which is right.
@@ -1181,5 +1273,26 @@ pub fn read(img: &Image, kind: Kind, out: &mut [u8], scan: &mut Scan, work: &mut
         -1
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_known_modules_of_every_version_fit() {
+        let mut list = [(0i16, 0i16, false); MAX_KNOWN];
+        for v in 1..=tables::MAX_VERSION {
+            assert!(known(v, &mut list) <= MAX_KNOWN);
+        }
+    }
+
+    #[test]
+    fn the_largest_version_fills_the_codeword_buffers() {
+        assert_eq!(
+            tables::raw_data_modules(tables::MAX_VERSION) / 8,
+            tables::MAX_CODEWORDS
+        );
     }
 }

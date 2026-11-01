@@ -17,6 +17,8 @@ default = ["module"]
 # qr.wasm itself: the exports, their buffers and the panic handler. Leave it off to link the reader
 # into another crate
 module = []
+# Buffers for QVGA frames and versions up to 15, about 90 KB less, for a microcontroller
+small = []
 
 [profile.release]
 opt-level = "z"

@@ -315,6 +315,7 @@ build/qr.wasm: $(QR_WASM)
 check-qr: build/qr.wasm
 	python3 qr/tests/gen_vectors.py $(QRGEN)/python build/qr
 	cd qr && rustup run $(RUST_TOOLCHAIN) cargo test --release
+	cd qr && rustup run $(RUST_TOOLCHAIN) cargo test --release --features small
 	python3 tools/check_wasm.py build/qr.wasm
 .PHONY: check-qr
 

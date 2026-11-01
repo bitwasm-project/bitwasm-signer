@@ -45,6 +45,10 @@ with every one spent, almost any garbage corrects to some codeword. Without eras
 keep the number ISO/IEC 18004 sets aside for misdecode protection (up to 3 at version 1, level L).
 With erasures, at least four are kept, or a third in larger blocks.
 
+**On a microcontroller**: the `small` feature sizes the buffers for QVGA frames and versions up to
+15, and `read_within` takes a smaller budget than `BUDGET`, so a frame that nearly reads gives way to
+the next. Link the crate without the default `module` feature.
+
 The frame is not copied: a pixel is dark when its grey is at or below its 8x8 block's threshold,
 worked out when it is looked at. The module's memory is 1.15 MB, almost all of it the frame buffer.
 
