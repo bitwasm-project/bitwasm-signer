@@ -13,7 +13,7 @@ VIEWER = Path(__file__).resolve().parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build/viewer.html"
 parser = (ROOT / "build/parser.wasm").read_bytes()
 address = (VIEWER / "build/address.wasm").read_bytes()
-qr = (VIEWER / "build/qr.wasm").read_bytes()
+qr = (ROOT / "build/qr.wasm").read_bytes()
 jsqr = (VIEWER / "vendor/jsQR.min.js").read_text()  # Safari has no built-in QR decoder
 # A file:// page cannot load an ES module, so embed the host library as a plain script.
 host = re.sub(r"^export ", "", (ROOT / "parser/hosts/js/parser.mjs").read_text(), flags=re.M)
