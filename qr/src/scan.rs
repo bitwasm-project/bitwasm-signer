@@ -47,23 +47,31 @@ impl Image<'_> {
         Some(if before == after { before } else { here })
     }
 
-    /// The colour of the module whose corners `t` maps from (mx, my) to (mx + 1, my + 1), from the
-    /// mean grey of five points across it, and how far that mean sits from the threshold
-    fn module(&self, t: &Transform, mx: f64, my: f64) -> (bool, u8) {
+    /// The colour of module (mx, my), from the mean grey of five points across it, and how far that
+    /// mean sits from the threshold. `nodes` is the grid from `sample`
+    fn module(&self, nodes: &[(i32, i32)], side: usize, mx: usize, my: usize) -> (bool, u8) {
+        // In sixteenths of a module: 5, 8 and 11 are the points at about 0.3, 0.5 and 0.7
+        let at = |ox: usize, oy: usize| {
+            let (ux, uy) = (mx * 16 + ox, my * 16 + oy);
+            let (i, j) = (ux / NODE_CELL, uy / NODE_CELL);
+            let (s, u) = ((ux % NODE_CELL) as i32, (uy % NODE_CELL) as i32);
+            let (rs, ru) = (NODE_CELL as i32 - s, NODE_CELL as i32 - u);
+            let n = j * side + i;
+            let (a, b, c, d) = (nodes[n], nodes[n + 1], nodes[n + side], nodes[n + side + 1]);
+            let lerp = |a: i32, b: i32, c: i32, d: i32| {
+                ((a * rs + b * s) * ru + (c * rs + d * s) * u + NODE_ROUND) >> NODE_SHIFT
+            };
+            (lerp(a.0, b.0, c.0, d.0), lerp(a.1, b.1, c.1, d.1))
+        };
         let mut sum = 0u32;
-        for (ox, oy) in [(0.5, 0.5), (0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)] {
-            let (px, py) = t.apply(mx + ox, my + oy);
-            let (x, y) = (round(px as f32), round(py as f32));
+        for (ox, oy) in [(8, 8), (5, 5), (11, 5), (5, 11), (11, 11)] {
+            let (x, y) = at(ox, oy);
             if x < 0 || y < 0 || x >= self.w || y >= self.h {
                 return (false, 0);
             }
             sum += self.grey[(y * self.w + x) as usize] as u32;
         }
-        let (px, py) = t.apply(mx + 0.5, my + 0.5);
-        let (x, y) = (
-            round(px as f32).clamp(0, self.w - 1),
-            round(py as f32).clamp(0, self.h - 1),
-        );
+        let (x, y) = at(8, 8);
         let bw = (self.w as usize).div_ceil(BLOCK);
         let threshold = self.thresholds[y as usize / BLOCK * bw + x as usize / BLOCK] as i32;
         let mean = (sum / 5) as i32;
@@ -660,6 +668,14 @@ fn climb(
 
 /// Patterns found to fit by least squares: three finders and up to 46 alignment patterns
 const MAX_PAIRS: usize = 49;
+/// Modules between the points of `sample`'s grid, which holds pixels in sixteenths
+const NODE_STEP: usize = 8;
+const NODE_CELL: usize = NODE_STEP * 16;
+const MAX_NODES: usize = tables::MAX_SIZE / NODE_STEP + 2;
+const NODE_SHIFT: u32 = 2 * NODE_CELL.trailing_zeros() + 4;
+const NODE_ROUND: i32 = 1 << (NODE_SHIFT - 1);
+// 4096 pixels in sixteenths times the 2^14 of the weights stays within an i32, and is outside any frame
+const NODE_LIMIT: f64 = (1 << 16) as f64;
 // Of the fixed modules in place, to try reading before climbing further
 const ENOUGH_PERCENT: usize = 90;
 const MAX_RINGS: i32 = 4;
@@ -828,11 +844,21 @@ fn refit(img: &Image, version: usize, mut t: Transform, ms: f64) -> Option<Trans
     Some(t)
 }
 
-/// Every module's colour into `grid` and how sure that is into `margin`
+/// Every module's colour into `grid` and how sure that is into `margin`. Only a coarse grid goes
+/// through `t`: without an FPU, mapping six points of every module took most of an animated frame
 fn sample(img: &Image, t: &Transform, n: usize, grid: &mut [u8], margin: &mut [u8]) {
+    let side = n / NODE_STEP + 2;
+    let mut nodes = [(0i32, 0i32); MAX_NODES * MAX_NODES];
+    let fixed = |v: f64| (v * 16.0).clamp(-NODE_LIMIT, NODE_LIMIT) as i32;
+    for j in 0..side {
+        for i in 0..side {
+            let (px, py) = t.apply((i * NODE_STEP) as f64, (j * NODE_STEP) as f64);
+            nodes[j * side + i] = (fixed(px), fixed(py));
+        }
+    }
     for y in 0..n {
         for x in 0..n {
-            let (dark, m) = img.module(t, x as f64, y as f64);
+            let (dark, m) = img.module(&nodes[..side * side], side, x, y);
             grid[y * n + x] = u8::from(dark);
             margin[y * n + x] = m;
         }
