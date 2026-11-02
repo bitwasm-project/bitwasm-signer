@@ -5,7 +5,7 @@
 概要と使い方は [README.md](README.md)、設計理由は [rationale.md](rationale.md) にまとめています。
 
 このページの「実機」は、これらのモジュールを最初に書いた対象である RP2350 のハードウェア署名デバイスです。
-別のプロジェクトで、公開していません。
+別のリポジトリ [bitwasm-signer-pico](https://github.com/bitwasm-project/bitwasm-signer-pico) です。
 
 ## どこに何があるか
 
