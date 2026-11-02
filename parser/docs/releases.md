@@ -8,10 +8,7 @@ How a release is produced, and how you check one.
 # 1. the hashes of both modules match the manifest
 sha256sum -c SHA256SUMS
 
-# 2. the manifest was signed by the maintainer
-gpg --verify SHA256SUMS.asc SHA256SUMS
-
-# 3. the file was built by this repository's release workflow, from this tag
+# 2. the file was built by this repository's release workflow, from this tag
 TAG=vX.Y.Z
 ID=https://github.com/bitwasm-project/bitwasm-signer/.github/workflows/release.yml@refs/tags/$TAG
 gh attestation verify parser.wasm --repo bitwasm-project/bitwasm-signer --cert-identity "$ID" --deny-self-hosted-runners
@@ -31,12 +28,8 @@ gh attestation verify parser.wasm --owner habakan --cert-identity "$ID" --deny-s
 gh attestation verify signer.wasm --owner habakan --cert-identity "$ID" --deny-self-hosted-runners
 ```
 
-The maintainer's public key is at https://github.com/habakan.gpg, fingerprint
-`8BD4 8DD6 70AF 9B34 7EA0  41CF 36D4 93A2 8A8B EB79`
-(also in [SECURITY.md](../../SECURITY.md)).
-
-Step 3 is independent of step 2: it does not depend on the maintainer's key at all, only on GitHub's
-signing of the build. Steps 2 and 3 fail for different reasons, which is the point of having both.
+Releases are not signed with the maintainer's GPG key. Step 2 relies on GitHub's signing of the
+build, and the reproducible build below does not rely on anything but the source.
 
 ## Checking it yourself, without trusting any of that
 
@@ -94,24 +87,13 @@ await Parser.load(parserWasm, { sha256: "…" });
 ## Making a release
 
 ```sh
-git tag -s v0.1.0 -m "v0.1.0"      # -s signs the tag
+git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
 The workflow runs the CI test suite for the tag, then publishes both `parser.wasm` and `signer.wasm`
 from that tested build. It writes `SHA256SUMS` and attaches a build provenance attestation to each
 module before creating the release.
-
-Then sign the manifest and attach it:
-
-```sh
-gh release download v0.1.0 -p SHA256SUMS
-gpg --armor --detach-sign SHA256SUMS
-gh release upload v0.1.0 SHA256SUMS.asc
-```
-
-Signing is deliberately a separate, manual step: **the key never goes near CI.** A key held by a CI
-runner signs whatever the runner is told to sign, which is not the property anyone wants from it.
 
 ## Keeping the hash honest
 
