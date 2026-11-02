@@ -12,13 +12,24 @@ sha256sum -c SHA256SUMS
 gpg --verify SHA256SUMS.asc SHA256SUMS
 
 # 3. the file was built by this repository's release workflow, from this tag
-ID=https://github.com/habakan/bitwasm-signer/.github/workflows/release.yml@refs/tags/v0.1.0
-gh attestation verify parser.wasm --repo habakan/bitwasm-signer --cert-identity "$ID" --deny-self-hosted-runners
-gh attestation verify signer.wasm --repo habakan/bitwasm-signer --cert-identity "$ID" --deny-self-hosted-runners
+TAG=vX.Y.Z
+ID=https://github.com/bitwasm-project/bitwasm-signer/.github/workflows/release.yml@refs/tags/$TAG
+gh attestation verify parser.wasm --repo bitwasm-project/bitwasm-signer --cert-identity "$ID" --deny-self-hosted-runners
+gh attestation verify signer.wasm --repo bitwasm-project/bitwasm-signer --cert-identity "$ID" --deny-self-hosted-runners
 ```
 
 `--repo` alone accepts an attestation from any workflow in the repository, on any branch.
 `--cert-identity` narrows it to the release workflow run for the tag you downloaded.
+
+Releases up to v0.3.0 were built before this repository moved from `habakan` to `bitwasm-project`.
+Their attestations are stored under the old owner and name the old path, so check them like this:
+
+```sh
+TAG=v0.3.0
+ID=https://github.com/habakan/bitwasm-signer/.github/workflows/release.yml@refs/tags/$TAG
+gh attestation verify parser.wasm --owner habakan --cert-identity "$ID" --deny-self-hosted-runners
+gh attestation verify signer.wasm --owner habakan --cert-identity "$ID" --deny-self-hosted-runners
+```
 
 The maintainer's public key is at https://github.com/habakan.gpg, fingerprint
 `8BD4 8DD6 70AF 9B34 7EA0  41CF 36D4 93A2 8A8B EB79`
