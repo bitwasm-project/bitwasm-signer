@@ -7,7 +7,7 @@
 Use GitHub's private vulnerability reporting on this repository
 ([Security → Report a vulnerability](https://github.com/bitwasm-project/bitwasm-signer/security/advisories/new)).
 
-The maintainer's public key, which signs releases: https://github.com/habakan.gpg
+The maintainer's public key, for encrypting a report: https://github.com/habakan.gpg
 
 Fingerprint: `8BD4 8DD6 70AF 9B34 7EA0  41CF 36D4 93A2 8A8B EB79`
 

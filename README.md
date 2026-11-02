@@ -44,6 +44,10 @@ The JavaScript, Kotlin and Swift host libraries check offsets returned by the mo
 each module's SHA-256. The signer's libraries require that hash and refuse a different build before it
 runs.
 
+Used by [BitHanko](https://github.com/bitwasm-project/bit-hanko), a signer app for Android, iPhone and
+the browser, and [bitwasm-signer-pico](https://github.com/bitwasm-project/bitwasm-signer-pico), a
+Raspberry Pi Pico 2 hardware signer.
+
 See [the design rationale](docs/rationale.md) and [the repository map](ARCHITECTURE.md).
 
 ## Building and testing

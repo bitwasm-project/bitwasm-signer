@@ -6,7 +6,7 @@ What this is and how to use it is in [README.md](README.md); why it is shaped th
 [docs/rationale.md](docs/rationale.md).
 
 *The device* in these pages is the RP2350 hardware signer these modules were first written for. It is
-a separate project and is not public.
+[bitwasm-signer-pico](https://github.com/bitwasm-project/bitwasm-signer-pico).
 
 ## Where things are
 
