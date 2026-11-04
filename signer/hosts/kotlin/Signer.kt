@@ -34,7 +34,7 @@ private object L {
     const val MSG_SIZE = 1101
     const val MSG_ADDRESS = 0; const val MSG_TEXT_KIND = 75; const val MSG_TEXT = 76; const val MSG_TEXT_CAP = 1025
 
-    const val MS_SIZE = 732
+    const val MS_SIZE = 736
     const val MS_THRESHOLD = 0; const val MS_N = 1; const val MS_OURS = 2; const val MS_FINGERPRINTS = 4
     const val MS_RECEIVE = 16; const val MS_RECEIVE_CAP = 75; const val MS_DESCRIPTOR = 91; const val MS_DESCRIPTOR_CAP = 640
 

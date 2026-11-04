@@ -28,6 +28,8 @@ The seed is BIP39's published all-zero test vector (`abandon` x11 + `about`), fi
 | `own_p2wsh_2of3_cosigned` | the same, with a cosigner's signature already in it |
 | `own_mixed_p2wsh_nwu` | P2WPKH and P2WSH 2-of-3 in one transaction |
 | `own_with_p2wsh_2of4_input` | one P2WPKH input ours, beside a P2WSH 2-of-4: too many keys for the plan |
+| `own_liana_primary_1in` | one Liana input, ours the primary key, recovery after 52596 blocks; paying out plus change |
+| `own_liana_recovery_1in` | the same with ours the recovery key on chains 2 and 3, spent once `older(144)` holds |
 
 ## Regenerating them
 

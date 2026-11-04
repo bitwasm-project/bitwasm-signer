@@ -31,7 +31,7 @@ private enum L {
     static let msgSize = 1101
     static let msgAddress = 0, msgTextKind = 75, msgText = 76, msgTextCap = 1025
 
-    static let msSize = 732
+    static let msSize = 736
     static let msThreshold = 0, msN = 1, msOurs = 2, msFingerprints = 4
     static let msReceive = 16, msReceiveCap = 75, msDescriptor = 91, msDescriptorCap = 640
 

@@ -391,6 +391,21 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
       ok("an input of another wallet holding our key is refused", /WALLET/.test(e.message));
     }
   }
+  // Liana, as the vectors build it: ours the primary key, then ours the recovery key on <2;3>
+  for (const [name, desc, ours, older, receive] of [
+    ["own_liana_primary_1in", `wsh(or_d(pk(${K0}),and_v(v:pkh(${K1}),older(52596))))`, 0, 52596,
+     "bc1qvyescgnual500mg9hygc99t5d3tmn6wmtrlh6dnq72pflh5svnmqaf0qnf"],
+    ["own_liana_recovery_1in", `wsh(or_d(pk(${K1}),and_v(v:pkh(${K0.replace("<0;1>", "<2;3>")}),older(144))))`, 1, 144,
+     "bc1qrk8e4m6gk9mmmy762qy693gg00j7ucxpnyhsagz3hf9tq4kjxvlq0qakku"],
+  ]) {
+    const l = W.multisigLoad(desc);
+    ok(`${name}: a Liana wallet with Core's receive address`,
+       l.kind === "liana" && l.ours === ours && l.older === older && l.receive === receive);
+    const v = planFor(`${root}parser/build/vectors/${name}.psbt`, FP);
+    const r = W.setPlan(v.plan).setPrevTxs(v.prevTxs).review();
+    ok(`${name}: its change is change, and it signs`, r.owner[1] === OWNER.CHANGE && W.sign().length === 1);
+  }
+  ok("a sortedmulti wallet says so", W.multisigLoad(`wsh(sortedmulti(2,${K0},${K1},${K2}))`).kind === "sortedmulti");
   W.multisigUnload();
   {
     const v = planFor(`${root}parser/build/vectors/own_p2wsh_2of3_1in.psbt`, FP);

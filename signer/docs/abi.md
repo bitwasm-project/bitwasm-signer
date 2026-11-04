@@ -78,7 +78,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_seedqr_output() -> ptr` | a SeedQR made from a mnemonic, at most 96 bytes. Secret: clear it once read |
 | `signer_message_output() -> ptr` | `core_message_t`, 1101 bytes: what to show before signing a message |
 | `signer_message_sig() -> ptr` | the BIP137 signature, 65 bytes |
-| `signer_multisig_output() -> ptr` | `core_multisig_t`, 732 bytes: what to show before trusting a multisig |
+| `signer_multisig_output() -> ptr` | `core_multisig_t`, 736 bytes: what to show before trusting a multisig |
 | `signer_cbor_output() -> ptr` | a crypto-account or crypto-output, CBOR, at most 1024 bytes |
 | `signer_words_output() -> ptr` | word indices from the word entry calls, little-endian uint16, at most 2048. The final words follow from the words typed before them: clear it once read |
 | `signer_wordlist() -> ptr` | the English BIP39 wordlist the module checks against, 2048 x 8 bytes in index order, each word NUL-padded. Read-only: hosts show the words of the indices above from it |
@@ -154,6 +154,10 @@ cannot tell the cosigners' keys from anyone else's. `signer_multisig_load` gives
 `signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` descriptor (with `/<0;1>/*`, `/**` or `/0/*` after
 each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
 `signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shape.
+`signer_multisig_load` also takes Liana's `wsh(or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),older(n))))`, with `n`
+from 1 to 65535 blocks and each key's `/<a;b>/*` as Liana numbers them (`<2;3>` for a key's second use). Without
+the wallet such an input is signed when its witness script is that shape, hashes to its script and holds our key
+as either one.
 Keys are xpub or tpub, or SLIP-132's Zpub or Vpub, and every origin step is hardened.
 
 It is refused with `FORMAT` for anything else, a key twice, a threshold above the key count or a key on the
@@ -168,7 +172,8 @@ the wallet's keys there hash to it and one of its inputs is being signed. Loadin
 
 `signer_multisig_cbor()` and `signer_account_cbor()` describe public keys as BCR-2020-010 and -015 do, for
 `parser_ur_encode_cbor()`: the wallet as `wsh(sortedmulti())`, and the account's `sh(wpkh())`, `wpkh()`, `tr()`
-and BIP48 key as `wsh(cosigner())`, each key a crypto-hdkey with its origin and parent fingerprint.
+and BIP48 key as `wsh(cosigner())`, each key a crypto-hdkey with its origin and parent fingerprint. A Liana
+wallet has no crypto-output tag, so `signer_multisig_cbor()` returns `-FORMAT` for it.
 
 ## Signing a message
 
@@ -263,16 +268,18 @@ original PSBT and leaves every other byte alone.
 | 75 | 1 | `text_kind`: 0 the message itself, 1 its hex |
 | 76 | 1025 | `text`, NUL-terminated |
 
-### `core_multisig_t` (732 bytes)
+### `core_multisig_t` (736 bytes)
 
 | offset | size | field |
 |---:|---:|---|
 | 0 | 1 | `threshold` |
 | 1 | 1 | `n`, how many keys |
-| 2 | 1 | `ours`, which of them |
+| 2 | 1 | `ours`, which of them; for Liana 0 is the primary key, 1 the recovery key |
+| 3 | 1 | `kind`: 0 `sortedmulti`, 1 Liana |
 | 4 | 3 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
 | 16 | 75 | `receive`, the first receive address, NUL-terminated |
-| 91 | 640 | `descriptor`, with xpub or tpub, `<0;1>` and its checksum, NUL-terminated |
+| 91 | 640 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
+| 732 | 2 | `older`: for Liana, the blocks after which the recovery key can spend |
 
 ## Signatures are deterministic
 
