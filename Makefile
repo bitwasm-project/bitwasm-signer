@@ -242,6 +242,20 @@ check-core-diff: build/parser.wasm build/signer.wasm parser/build/vectors/own_p2
 	exit $$rc
 .PHONY: check-core-diff
 
+# Spends the or_d shapes on regtest with signer.wasm's signature: mined after the timelock, refused before it
+check-core-spend: build/parser.wasm build/signer.wasm
+	@set -e; \
+	command -v bitcoind >/dev/null || { echo "bitcoind not found (brew install bitcoin)"; exit 1; }; \
+	$(BTCCLI) stop >/dev/null 2>&1 || true; sleep 1; \
+	rm -rf $(BTCDIR) && mkdir -p $(BTCDIR); \
+	bitcoind -regtest -datadir=$(PWD)/$(BTCDIR) -rpcport=$(BTCPORT) -daemon -txindex -fallbackfee=0.0001; \
+	for i in $$(seq 1 30); do $(BTCCLI) getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done; \
+	rc=0; \
+	node tools/check_spend_on_regtest.mjs "$(BTCCLI)" build/parser.wasm build/signer.wasm || rc=1; \
+	$(BTCCLI) stop >/dev/null 2>&1 || true; \
+	exit $$rc
+.PHONY: check-core-spend
+
 # --- the port from C to Rust, in progress ---
 #
 # Both are built and required to agree on every vector and on fuzzed input. The C is the reference

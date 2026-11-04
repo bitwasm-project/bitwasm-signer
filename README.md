@@ -71,7 +71,8 @@ Needs clang with the wasm32 target, a wasi-libc sysroot, and Node. With Homebrew
 `brew install llvm lld wasi-libc wasi-runtimes node cmake`.
 
 Both modules' tests run under Node/V8 and WAMR's classic interpreter. Where an independent opinion is
-required, it comes from **Bitcoin Core itself** (`make check-core-diff`, which needs `bitcoind`).
+required, it comes from **Bitcoin Core itself** (`make check-core-diff`, which needs `bitcoind`), and
+`make check-core-spend` spends the `or_d` shapes on regtest with our signatures.
 
 That uses whatever clang you have, which is fine for development but will not reproduce a release
 byte for byte. For that, use the pinned toolchain — see
