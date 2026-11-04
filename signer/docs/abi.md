@@ -43,7 +43,7 @@ way it is not for `parser.wasm`.
 ```
 signer_init(testnet)
 signer_seed_from_mnemonic(...)   or   signer_seed_from_seedqr(...)   or   signer_load_seed()
-signer_plan()        <- write the 6712-byte plan_t here
+signer_plan()        <- write the 8536-byte plan_t here
 signer_set_prevtx(i, off, len)   for each input, after writing into signer_prevtx()
 signer_review()      -> re-derives keys, decides what is ours, computes the fee
 signer_display()     -> the strings and amounts to show
@@ -64,7 +64,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 |---|---|
 | `signer_input() -> ptr` | the mnemonic or a SeedQR payload followed by the passphrase, a 64-byte seed, entropy or dice rolls for a new mnemonic, an address to find, a message to sign, or a multisig setup |
 | `signer_input_cap() -> u32` | how many bytes that is (1024); check before writing |
-| `signer_plan() -> ptr` | the `plan_t`, 6712 bytes, copied verbatim from `parser_plan()` |
+| `signer_plan() -> ptr` | the `plan_t`, 8536 bytes, copied verbatim from `parser_plan()` |
 | `signer_prevtx() -> ptr` | the `non_witness_utxo` bytes, laid out however you like within 32768 |
 | `signer_review_output() -> ptr` | `core_review_t`, 64 bytes |
 | `signer_display_output() -> ptr` | `core_display_t`, 2968 bytes |
@@ -78,7 +78,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_seedqr_output() -> ptr` | a SeedQR made from a mnemonic, at most 96 bytes. Secret: clear it once read |
 | `signer_message_output() -> ptr` | `core_message_t`, 1101 bytes: what to show before signing a message |
 | `signer_message_sig() -> ptr` | the BIP137 signature, 65 bytes |
-| `signer_multisig_output() -> ptr` | `core_multisig_t`, 736 bytes: what to show before trusting a multisig |
+| `signer_multisig_output() -> ptr` | `core_multisig_t`, 1136 bytes: what to show before trusting a multisig |
 | `signer_cbor_output() -> ptr` | a crypto-account or crypto-output, CBOR, at most 1024 bytes |
 | `signer_words_output() -> ptr` | word indices from the word entry calls, little-endian uint16, at most 2048. The final words follow from the words typed before them: clear it once read |
 | `signer_wordlist() -> ptr` | the English BIP39 wordlist the module checks against, 2048 x 8 bytes in index order, each word NUL-padded. Read-only: hosts show the words of the indices above from it |
@@ -154,12 +154,14 @@ cannot tell the cosigners' keys from anyone else's. `signer_multisig_load` gives
 `signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` descriptor (with `/<0;1>/*`, `/**` or `/0/*` after
 each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
 `signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shape.
-`signer_multisig_load` also takes Liana's `wsh(or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),older(n))))`, and the
-same with `v:pk(RECOVERY)` or `after(n)` as Nunchuk writes it, with `n` from 1 to 2^31 - 1 as miniscript takes
-it and each key's `/<a;b>/*` as Liana numbers them (`<2;3>` for a key's second use). The signer does not check
-the transaction's locktime or sequence against `n`: a signature made too early only fails to confirm. Without
-the wallet such an input is signed when its witness script is that shape, hashes to its script and holds our key
-as either one.
+`signer_multisig_load` also takes `wsh(or_d(X,and_v(v:Y,older(n))))` and the same with `after(n)`: X is
+`pk(KEY)` or `multi(m,KEY,...)` of two or three keys, Y the same or `pkh(KEY)`. That is Liana's
+`or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),...))`, Nunchuk's templates and Keeper's Emergency Key. `n` runs from 1 to
+2^31 - 1 as miniscript takes it, and each key's `/<a;b>/*` is as the wallet numbers it (`<2;3>` for a key's
+second use). Our key has to appear once: a wallet that reuses it on both paths is `FORMAT`. The signer does not
+check the transaction's locktime or sequence against `n`: a signature made too early only fails to confirm.
+Without the wallet such an input is signed when its witness script is that shape, hashes to its script and holds
+our key anywhere in it.
 Keys are xpub or tpub, or SLIP-132's Zpub or Vpub, and every origin step is hardened.
 
 It is refused with `FORMAT` for anything else, a key twice, a threshold above the key count or a key on the
@@ -270,18 +272,20 @@ original PSBT and leaves every other byte alone.
 | 75 | 1 | `text_kind`: 0 the message itself, 1 its hex |
 | 76 | 1025 | `text`, NUL-terminated |
 
-### `core_multisig_t` (736 bytes)
+### `core_multisig_t` (1136 bytes)
 
 | offset | size | field |
 |---:|---:|---|
-| 0 | 1 | `threshold` |
+| 0 | 1 | `threshold`, for `or_d` the primary path's |
 | 1 | 1 | `n`, how many keys |
-| 2 | 1 | `ours`, which of them; for `or_d` 0 is the primary key, 1 the recovery key |
-| 3 | 1 | `kind`: 0 `sortedmulti`, or 1 `or_d` with 2 set for `v:pk(RECOVERY)` and 4 for `after()` |
-| 4 | 3 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
-| 16 | 75 | `receive`, the first receive address, NUL-terminated |
-| 91 | 640 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
-| 732 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery key can spend |
+| 2 | 1 | `ours`, which of them; for `or_d` the primary path's keys come first |
+| 3 | 1 | `kind`: 0 `sortedmulti`, or 1 `or_d` with 2 set for a single recovery key's `v:pk` and 4 for `after()` |
+| 4 | 6 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
+| 28 | 75 | `receive`, the first receive address, NUL-terminated |
+| 103 | 1024 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
+| 1127 | 1 | `primary`: for `or_d`, how many of the keys are the primary path's |
+| 1128 | 1 | `threshold2`: for `or_d`, the recovery path's threshold |
+| 1132 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery keys can spend |
 
 ## Signatures are deterministic
 

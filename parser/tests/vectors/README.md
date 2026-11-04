@@ -27,11 +27,13 @@ The seed is BIP39's published all-zero test vector (`abandon` x11 + `about`), fi
 | `own_p2wsh_2of3_1in` | one BIP48 P2WSH 2-of-3 input, paying out plus P2WSH change |
 | `own_p2wsh_2of3_cosigned` | the same, with a cosigner's signature already in it |
 | `own_mixed_p2wsh_nwu` | P2WPKH and P2WSH 2-of-3 in one transaction |
-| `own_with_p2wsh_2of4_input` | one P2WPKH input ours, beside a P2WSH 2-of-4: too many keys for the plan |
+| `own_with_p2wsh_2of7_input` | one P2WPKH input ours, beside a P2WSH 2-of-7: too many keys for the plan |
 | `own_liana_primary_1in` | one Liana input, ours the primary key, recovery after 52596 blocks; paying out plus change |
 | `own_liana_recovery_1in` | the same with ours the recovery key on chains 2 and 3, spent once `older(144)` holds |
 | `own_or_d_pk_primary_1in` | the same shape with `v:pk` for the recovery key, as Nunchuk writes it, and a time-based `older(4194432)`; ours the primary key |
 | `own_or_d_pk_after_recovery_1in` | `v:pk` with `after(1000000)`, ours the recovery key, the locktime at 1000000 |
+| `own_or_d_multi_ek_primary_1in` | Keeper's Emergency Key: ours in a 2-of-3 `multi`, the recovery `v:pkh` after block 900000 |
+| `own_or_d_multi_recovery_1in` | a 2-of-3 `multi` on each path, ours on the recovery one: a 219-byte witness script, the plan's limit |
 
 ## Regenerating them
 

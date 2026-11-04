@@ -32,7 +32,7 @@ private class PlanSource(parserWasm: ByteArray) {
         mem.write(call("parser_input"), psbt)
         val rc = call("parser_parse", psbt.size.toLong(), fingerprint.toLong())
         require(rc == 0) { "parser refused the PSBT: $rc" }
-        val plan = mem.readBytes(call("parser_plan"), 6712)
+        val plan = mem.readBytes(call("parser_plan"), 8536)
         val nIn = plan[16].toInt() and 0xff
         val inputAt = call("parser_input")
         return plan to (0 until nIn).map { i ->
@@ -185,7 +185,7 @@ fun main(args: Array<String>) {
         s.setPlan(ByteArray(100))
         ok("a plan of the wrong size is refused", false)
     } catch (e: IllegalArgumentException) {
-        ok("a plan of the wrong size is refused", e.message!!.contains("6712 bytes"))
+        ok("a plan of the wrong size is refused", e.message!!.contains("8536 bytes"))
     }
 
     // --- prevtxs that overflow the module's buffer are refused before they are written

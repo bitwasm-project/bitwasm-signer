@@ -8,12 +8,14 @@
 #include <stdint.h>
 
 #define PLAN_MAGIC 0x4e4c5042u /* "BPLN" */
-#define PLAN_VERSION 2
+#define PLAN_VERSION 3
 #define PLAN_MAX_INPUTS 16
 #define PLAN_MAX_OUTPUTS 16
 #define PLAN_MAX_SPK 83 /* standard OP_RETURN limit; P2TR / P2WSH are 34 */
 #define PLAN_MAX_DEPTH 8
-#define PLAN_MAX_WSCRIPT 105 /* sortedmulti of at most three keys: OP_m, 3 x (push + 33), OP_n, OP_CHECKMULTISIG */
+/* or_d of two three-key multis: 2 x (OP_m, 3 x (push + 33), OP_n, CHECKMULTISIG), IFDUP NOTIF, a 5-byte timelock,
+ * CSV ENDIF */
+#define PLAN_MAX_WSCRIPT 219
 
 typedef struct {
     uint8_t len;
@@ -70,6 +72,6 @@ _Static_assert(sizeof(plan_input_t) == 176, "plan_input_t layout");
 _Static_assert(sizeof(plan_output_t) == 136, "plan_output_t layout");
 _Static_assert(offsetof(plan_t, inputs) == 24, "plan_t layout");
 _Static_assert(offsetof(plan_t, wscripts) == 5016, "plan_t layout");
-_Static_assert(sizeof(plan_t) == 6712, "plan_t layout");
+_Static_assert(sizeof(plan_t) == 8536, "plan_t layout");
 
 #endif

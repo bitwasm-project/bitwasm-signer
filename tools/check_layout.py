@@ -54,6 +54,8 @@ def main():
         "multisig.descriptor": truth["core_multisig_t"]["descriptor"],
         "multisig.descriptorCap": truth["core_multisig_t"]["descriptor_cap"],
         "multisig.kind": truth["core_multisig_t"]["kind"],
+        "multisig.primary": truth["core_multisig_t"]["primary"],
+        "multisig.threshold2": truth["core_multisig_t"]["threshold2"],
         "multisig.lock": truth["core_multisig_t"]["lock"],
     }
     for name, want in want_js.items():

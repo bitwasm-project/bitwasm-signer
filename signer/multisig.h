@@ -2,17 +2,18 @@
 #define CORE_MULTISIG_H
 
 /* A P2WSH sortedmulti wallet of at most three keys, read from a coordinator's descriptor, BSMS record or
- * Coldcard-style setup file, or Liana's primary key with a timelocked recovery key. Only public keys: core.c
- * decides which of them is ours */
+ * Coldcard-style setup file, or a primary path with a timelocked recovery path as Liana, Nunchuk and Keeper write
+ * them. Only public keys: core.c decides which of them is ours */
 
 #include <stddef.h>
 #include <stdint.h>
 #include "plan.h"
 #include "address.h"
 
-#define MS_MAX_KEYS 3
+#define MS_MAX_SORTED 3 /* sortedmulti, and each side of an or_d */
+#define MS_MAX_KEYS (2 * MS_MAX_SORTED)
 #define MS_MAX_DEPTH (PLAN_MAX_DEPTH - 2) /* the origin path, leaving room for chain and index */
-#define MS_DESC_MAX 640
+#define MS_DESC_MAX 1024
 
 typedef struct {
     uint32_t fingerprint;
@@ -22,12 +23,12 @@ typedef struct {
     uint8_t ser[78];   /* the xpub as serialized: chain code at 13, public key at 45 */
 } ms_key_t;
 
-/* OR_D is wsh(or_d(pk(keys[0]),and_v(v:pkh(keys[1]),older(lock)))) as Liana writes it. The flags swap in
- * v:pk(keys[1]) and after(lock), as Nunchuk can write it */
+/* OR_D is wsh(or_d(X,and_v(v:Y,older(lock)))), X keys[0, primary) as pk() or multi(threshold,...), Y the rest as
+ * multi(threshold2,...) or one key's v:pkh(), v:pk() with the PK flag; AFTER swaps in after(lock) */
 enum { MS_SORTEDMULTI = 0, MS_OR_D = 1, MS_OR_D_PK = 2, MS_OR_D_AFTER = 4 };
 
 typedef struct {
-    uint8_t kind, threshold, n;
+    uint8_t kind, threshold, n, primary, threshold2;
     uint32_t lock; /* OR_D: the older() or after() value, 1 to 2^31 - 1 */
     ms_key_t keys[MS_MAX_KEYS];
 } ms_wallet_t;

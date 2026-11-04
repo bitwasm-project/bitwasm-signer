@@ -117,25 +117,45 @@ static int desc_checksum(const char *s, size_t n, char out[9]) {
     return 1;
 }
 
-/* wsh(sortedmulti(k,KEY,...)) or wsh(or_d(pk(KEY),and_v(v:pkh(KEY),older(n)))) with v:pk and after() too, and if
- * there is one, a checksum that has to hold */
+/* pk(KEY), pkh(KEY) where pkh is not NULL, or multi(m,KEY,...) of two or three keys, appended to w's keys.
+ * Returns its threshold, 1 for a single key, or 0 */
+static unsigned int side(cur_t *c, int testnet, ms_wallet_t *w, int *pkh) {
+    unsigned int start = w->n;
+    uint32_t m = 1;
+    if (eat(c, "pk(") || (pkh && (*pkh = eat(c, "pkh(")))) {
+        if (!key_expr(c, testnet, &w->keys[w->n++])) return 0;
+    } else {
+        if (!eat(c, "multi(") || !number(c, &m)) return 0;
+        while (eat(c, ","))
+            if (w->n - start == MS_MAX_SORTED || !key_expr(c, testnet, &w->keys[w->n++])) return 0;
+        if (w->n - start < 2 || m < 1 || m > w->n - start) return 0;
+    }
+    return eat(c, ")") ? m : 0;
+}
+
+/* wsh(sortedmulti(k,KEY,...)) or wsh(or_d(X,and_v(v:Y,older(n)))) as ms_wallet_t describes it, and if there is
+ * one, a checksum that has to hold */
 static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
     size_t start = c->i;
     uint32_t k;
+    unsigned int m, m2;
+    int pkh = 0;
     char sum[9];
-    if (eat(c, "wsh(or_d(pk(")) {
-        if (!key_expr(c, testnet, &w->keys[0]) || !eat(c, "),and_v(v:")) return 0;
-        w->kind = eat(c, "pk(") ? MS_OR_D | MS_OR_D_PK : eat(c, "pkh(") ? MS_OR_D : 0;
-        if (!w->kind || !key_expr(c, testnet, &w->keys[1]) || !eat(c, "),")) return 0;
+    if (eat(c, "wsh(or_d(")) {
+        if (!(m = side(c, testnet, w, NULL)) || !eat(c, ",and_v(v:")) return 0;
+        w->primary = w->n;
+        if (!(m2 = side(c, testnet, w, &pkh)) || !eat(c, ",")) return 0;
+        w->kind = MS_OR_D | (w->n - w->primary == 1 && !pkh ? MS_OR_D_PK : 0);
         if (eat(c, "after(")) w->kind |= MS_OR_D_AFTER;
         else if (!eat(c, "older(")) return 0;
         if (!number(c, &k) || !eat(c, "))))") || k < 1) return 0;
-        w->threshold = 1, w->n = 2, w->lock = k;
+        w->threshold = (uint8_t)m, w->threshold2 = (uint8_t)m2, w->lock = k;
     } else {
         if (!eat(c, "wsh(sortedmulti(") || !number(c, &k)) return 0;
         for (w->n = 0; eat(c, ",");) {
             ms_key_t *key = &w->keys[w->n];
-            if (w->n == MS_MAX_KEYS || !key_expr(c, testnet, key) || key->child[0] != 0 || key->child[1] != 1) return 0;
+            if (w->n == MS_MAX_SORTED || !key_expr(c, testnet, key) || key->child[0] != 0 || key->child[1] != 1)
+                return 0;
             w->n++;
         }
         if (!eat(c, "))") || k < 1 || k > w->n) return 0;
@@ -203,7 +223,7 @@ static int setup_file(cur_t *c, int testnet, ms_wallet_t *w) {
             p2wsh = 1;
         } else {
             ms_key_t *k = &w->keys[w->n];
-            if (w->n == MS_MAX_KEYS || !at.depth || !hex_fp(&l, &k->fingerprint) || !eat(&l, ":")) return 0;
+            if (w->n == MS_MAX_SORTED || !at.depth || !hex_fp(&l, &k->fingerprint) || !eat(&l, ":")) return 0;
             while (eat(&l, " "));
             k->depth = at.depth;
             k->child[1] = 1;
@@ -240,23 +260,32 @@ size_t ms_scriptnum(uint32_t n, uint8_t out[5]) {
     return len;
 }
 
-/* <A> CHECKSIG IFDUP NOTIF, DUP HASH160 <HASH160(B)> EQUALVERIFY or <B>, CHECKSIGVERIFY <n> CSV or CLTV ENDIF */
-static void or_d_wscript(const ms_wallet_t *w, const uint8_t a[33], const uint8_t b[33], plan_wscript_t *out) {
-    static const uint8_t head[] = {0xac, 0x73, 0x64}, pkh[] = {0x76, 0xa9, 0x14};
-    uint8_t *s = out->bytes;
-    size_t o = 37;
-    s[0] = 33;
-    memcpy(s + 1, a, 33);
-    memcpy(s + 34, head, sizeof(head));
-    if (w->kind & MS_OR_D_PK) {
-        s[o++] = 33;
-        memcpy(s + o, b, 33), o += 33;
-    } else {
-        memcpy(s + o, pkh, sizeof(pkh)), o += sizeof(pkh);
-        hash160(b, 33, s + o), o += 20;
+/* pk(K) as <K> CHECKSIG, pkh(K) as DUP HASH160 <HASH160(K)> EQUALVERIFY CHECKSIG, multi(m,...) as m <K>... n
+ * CHECKMULTISIG, each with VERIFY if asked. Returns the bytes written */
+static size_t put_check(uint8_t *s, unsigned int m, unsigned int n, const uint8_t (*k)[33], int verify, int pkh) {
+    size_t o = 0;
+    if (pkh) {
+        s[o++] = 0x76, s[o++] = 0xa9, s[o++] = 0x14;
+        hash160(k[0], 33, s + o), o += 20;
         s[o++] = 0x88;
     }
-    s[o++] = 0xad;
+    if (n > 1) s[o++] = (uint8_t)(0x50 + m);
+    for (unsigned int i = 0; i < n && !pkh; i++) {
+        s[o++] = 33;
+        memcpy(s + o, k[i], 33), o += 33;
+    }
+    if (n > 1) s[o++] = (uint8_t)(0x50 + n);
+    s[o++] = (uint8_t)((n > 1 ? 0xae : 0xac) + verify);
+    return o;
+}
+
+/* X IFDUP NOTIF Y <n> CSV or CLTV ENDIF, Y with VERIFY */
+static void or_d_wscript(const ms_wallet_t *w, const uint8_t (*k)[33], plan_wscript_t *out) {
+    unsigned int n2 = w->n - w->primary;
+    uint8_t *s = out->bytes;
+    size_t o = put_check(s, w->threshold, w->primary, k, 0, 0);
+    s[o++] = 0x73, s[o++] = 0x64;
+    o += put_check(s + o, w->threshold2, n2, k + w->primary, 1, n2 == 1 && !(w->kind & MS_OR_D_PK));
     o += ms_scriptnum(w->lock, s + o);
     s[o++] = w->kind & MS_OR_D_AFTER ? 0xb1 : 0xb2, s[o++] = 0x68;
     out->len = (uint8_t)o;
@@ -274,7 +303,7 @@ int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscrip
             memcpy(t, keys[j], 33), memcpy(keys[j], keys[j - 1], 33), memcpy(keys[j - 1], t, 33);
         }
     }
-    if (w->kind & MS_OR_D) return or_d_wscript(w, keys[0], keys[1], out), 1;
+    if (w->kind & MS_OR_D) return or_d_wscript(w, (const uint8_t (*)[33])keys, out), 1;
     out->bytes[out->len++] = (uint8_t)(0x50 + w->threshold);
     for (unsigned int i = 0; i < w->n; i++) {
         out->bytes[out->len++] = 33;
@@ -330,15 +359,25 @@ static size_t put_key(char *out, size_t o, const ms_key_t *k, int testnet) {
     return put(out, o, ">/*");
 }
 
+/* keys [from, to) as pk(), pkh() or multi(m,...) */
+static size_t put_side(char *out, size_t o, const ms_wallet_t *w, unsigned int from, unsigned int to, unsigned int m,
+                       int pkh, int testnet) {
+    char num[11];
+    if (to - from == 1) return put(out, put_key(out, put(out, o, pkh ? "pkh(" : "pk("), &w->keys[from], testnet), ")");
+    decimal(m, num);
+    o = put(out, put(out, o, "multi("), num);
+    for (unsigned int i = from; i < to; i++) o = put_key(out, put(out, o, ","), &w->keys[i], testnet);
+    return put(out, o, ")");
+}
+
 size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]) {
     char num[11];
     size_t o;
     if (w->kind & MS_OR_D) {
-        o = put(out, 0, "wsh(or_d(pk(");
-        o = put_key(out, o, &w->keys[0], testnet);
-        o = put(out, o, w->kind & MS_OR_D_PK ? "),and_v(v:pk(" : "),and_v(v:pkh(");
-        o = put_key(out, o, &w->keys[1], testnet);
-        o = put(out, o, w->kind & MS_OR_D_AFTER ? "),after(" : "),older(");
+        o = put_side(out, put(out, 0, "wsh(or_d("), w, 0, w->primary, w->threshold, 0, testnet);
+        o = put(out, o, ",and_v(v:");
+        o = put_side(out, o, w, w->primary, w->n, w->threshold2, !(w->kind & MS_OR_D_PK), testnet);
+        o = put(out, o, w->kind & MS_OR_D_AFTER ? ",after(" : ",older(");
         decimal(w->lock, num);
         o = put(out, o, num);
         o = put(out, o, "))))");

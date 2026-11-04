@@ -98,6 +98,8 @@ export class Signer {
             receiveCap: number;
             descriptor: number;
             descriptorCap: number;
+            primary: number;
+            threshold2: number;
             lock: number;
         };
         limits: {
@@ -271,7 +273,7 @@ export class Signer {
         descriptor: string;
     };
     /** Registers a P2WSH sortedmulti wallet of at most three keys, from a descriptor, a BSMS 1.0 record or a
-     *  Coldcard setup file, or a Liana or Nunchuk or_d wallet from its descriptor. Show what this returns, the receive address
+     *  Coldcard setup file, or a Liana, Nunchuk or Keeper or_d wallet from its descriptor. Show what this returns, the receive address
      *  above all, before trusting it: from then on the wallet's inputs are signed only when they are the
      *  wallet's, and its outputs at our paths are change. Loading another seed unloads it. */
     /** @param {string | Uint8Array} text */
@@ -279,6 +281,8 @@ export class Signer {
         kind: string;
         threshold: number;
         ours: number;
+        primary: number;
+        threshold2: number;
         recovery: string;
         older: number;
         after: number;
@@ -292,6 +296,8 @@ export class Signer {
         kind: string;
         threshold: number;
         ours: number;
+        primary: number;
+        threshold2: number;
         recovery: string;
         older: number;
         after: number;
