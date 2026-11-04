@@ -236,6 +236,14 @@ static int setup_file(cur_t *c, int testnet, ms_wallet_t *w) {
     return p2wsh && n == w->n && m >= 1 && m <= n;
 }
 
+/* Keys i > j differ, or are one xpub on both paths of an or_d under other steps, as a reused signer is */
+static int distinct(const ms_wallet_t *w, unsigned int i, unsigned int j) {
+    const ms_key_t *a = &w->keys[i], *b = &w->keys[j];
+    return memcmp(a->ser + 45, b->ser + 45, 33) ||
+           ((w->kind & MS_OR_D) && j < w->primary && i >= w->primary && a->child[0] != b->child[0] &&
+            a->child[0] != b->child[1] && a->child[1] != b->child[0] && a->child[1] != b->child[1]);
+}
+
 int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char address[ADDRESS_MAX]) {
     cur_t c = {s, len, 0};
     int ok;
@@ -246,7 +254,7 @@ int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char addres
     else if (c.n >= 4 && !memcmp(s, "wsh(", 4)) ok = descriptor(&c, testnet, w) && c.i == c.n;
     else ok = setup_file(&c, testnet, w);
     for (unsigned int i = 0; ok && i < w->n; i++)
-        for (unsigned int j = 0; j < i; j++) ok &= !!memcmp(w->keys[i].ser + 45, w->keys[j].ser + 45, 33);
+        for (unsigned int j = 0; j < i; j++) ok &= distinct(w, i, j);
     if (!ok) memset(w, 0, sizeof(*w)), address[0] = 0;
     return ok;
 }

@@ -124,7 +124,7 @@ for (const name of vectors) {
   const p = Parser.loadSync(parserWasm);
   p.parse(readFileSync(`${vectorDir}/own_mixed_nwu.psbt`), FP);
   const sig = { input: 0, pubkey: new Uint8Array(33).fill(2), sig: new Uint8Array(71) };
-  throws(() => p.finalize(Array(17).fill(sig)), "RangeError", "17 signatures");
+  throws(() => p.finalize(Array(33).fill(sig)), "RangeError", "33 signatures");
   throws(() => p.finalize([{ ...sig, pubkey: new Uint8Array(34) }]), "RangeError", "a 34-byte pubkey");
   throws(() => p.finalize([{ ...sig, sig: new Uint8Array(74) }]), "RangeError", "a 74-byte signature");
   throws(() => p.finalize([{ ...sig, input: 16 }]), "RangeError", "input 16");

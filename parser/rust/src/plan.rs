@@ -11,6 +11,8 @@ pub const MAX_INPUTS: usize = 16;
 pub const MAX_OUTPUTS: usize = 16;
 pub const MAX_SPK: usize = 83; // the standard OP_RETURN limit; P2TR and P2WSH need 34
 pub const MAX_DEPTH: usize = 8;
+// two per input at most: an or_d wallet can hold two of our keys, one on each path
+pub const MAX_SIGS: usize = 2 * MAX_INPUTS;
 // or_d of two three-key multis: 2 x (OP_m, 3 x (push + 33), OP_n, CHECKMULTISIG), IFDUP NOTIF, a 5-byte
 // timelock, CSV ENDIF
 pub const MAX_WSCRIPT: usize = 219;

@@ -235,6 +235,9 @@ for (const path of vectorFiles(/^own_.*\.psbt$/)) {
                  Uint8Array.from([0x30, 0x44, ...Array(68).fill(0x5a), 0x01])]);
     }
   });
+  // a wallet with our key on both paths: that input's second signature, by our other key
+  (exp.second ?? []).forEach((pub, i) => pub && sigs.push([i, Uint8Array.from(Buffer.from(pub, "hex")),
+                                                           Uint8Array.from([0x30, 0x44, ...Array(68).fill(0x5b), 0x01])]));
   const [n, out] = p.finalize(sigs);
   const inserted = sigs.reduce((a, [, pub, s]) => a + (pub[0] ? 2 + 33 + 1 + s.length : 2 + 1 + s.length), 0);
   check(n === raw.length + inserted, `${name}: finalize length ${n}`);
@@ -264,7 +267,13 @@ for (const path of vectorFiles(/^own_.*\.psbt$/)) {
           `${name}: sig for foreign input`);
   }
   check(p.finalize([sigs[0], sigs[0]])[0] < 0, `${name}: duplicate input`);
-  check(p.finalize(Array(17).fill(sigs[0]))[0] < 0, `${name}: too many sigs`);
+  check(p.call("parser_finalize", 33) < 0, `${name}: too many sigs`); // only the count: 33 would overrun the buffer
+  {
+    const [i0, pub0, sig0] = sigs[0];
+    const other = Uint8Array.from([pub0[0] === 2 ? 3 : 2, ...pub0.subarray(1)]);
+    check((p.finalize([sigs[0], [i0, other, sig0]])[0] > 0) === exp.inputs[i0].spk.startsWith("0020"),
+          `${name}: a second key's signature in one input only for P2WSH`);
+  }
   {
     const [i0, pub0, sig0] = sigs[0];
     check(p.finalize([[i0, Uint8Array.from([5, ...pub0.subarray(1)]), sig0]])[0] < 0,

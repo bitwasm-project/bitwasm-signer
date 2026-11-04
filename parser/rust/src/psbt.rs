@@ -12,7 +12,7 @@ use crate::tx;
 
 pub const PSBT_MAX: usize = 32768;
 /// A signature and an anti-exfil Q per input.
-pub const PSBT_OUT_MAX: usize = PSBT_MAX + plan::MAX_INPUTS * 192;
+pub const PSBT_OUT_MAX: usize = PSBT_MAX + plan::MAX_SIGS * 192;
 /// The proprietary key prefix of the anti-exfil fields: 1 is the coordinator's n, 2 our Q.
 pub const EXFIL_KEY: [u8; 9] = [0xfc, 7, b'b', b'i', b't', b'w', b'a', b's', b'm'];
 const MAX_KV: usize = 64;

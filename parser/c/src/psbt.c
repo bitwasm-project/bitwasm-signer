@@ -18,8 +18,8 @@
 static uint8_t in_buf[PSBT_MAX], out_buf[PSBT_OUT_MAX];
 static size_t in_len;
 static plan_t plan;
-static plan_sig_t sigs[PLAN_MAX_INPUTS];
-static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_INPUTS][33];
+static plan_sig_t sigs[PLAN_MAX_SIGS];
+static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_SIGS][33];
 static const uint8_t exfil_key[9] = {0xfc, 7, 'b', 'i', 't', 'w', 'a', 's', 'm'};
 static uint32_t prevtx_off[PLAN_MAX_INPUTS], prevtx_len[PLAN_MAX_INPUTS];
 static size_t in_map_end[PLAN_MAX_INPUTS];
@@ -436,52 +436,61 @@ int EXPORT(parser_parse)(unsigned int len, unsigned int fp) {
     return P_OK;
 }
 
+/* Writes sigs[k] as input i's partial signature, and its anti-exfil Q when the host gave one */
+static size_t put_sig(size_t o, unsigned int i, unsigned int k) {
+    const plan_sig_t *s = &sigs[k];
+    const int p2tr = is_p2tr(&plan.inputs[i].spk);
+    /* every length is below 0xfd, so each compact size is one byte */
+    if (!p2tr) {
+        out_buf[o++] = 34;
+        out_buf[o++] = 0x02;
+        memcpy(out_buf + o, s->pubkey, 33), o += 33;
+    } else {
+        out_buf[o++] = 1;
+        out_buf[o++] = 0x13;
+    }
+    out_buf[o++] = s->sig_len;
+    memcpy(out_buf + o, s->sig, s->sig_len), o += s->sig_len;
+    if (memcmp(points[k], (const uint8_t[33]){0}, 33)) {
+        out_buf[o++] = (uint8_t)(sizeof(exfil_key) + 1 + 33 - p2tr);
+        memcpy(out_buf + o, exfil_key, sizeof(exfil_key)), o += sizeof(exfil_key);
+        out_buf[o++] = 2;
+        memcpy(out_buf + o, s->pubkey + p2tr, 33u - p2tr), o += 33u - p2tr;
+        out_buf[o++] = 33;
+        memcpy(out_buf + o, points[k], 33), o += 33;
+    }
+    return o;
+}
+
 /* Called after the host writes n signatures to parser_sigs(). Returns the signed PSBT length, or a negative value */
 int EXPORT(parser_finalize)(unsigned int n) {
-    int by_input[PLAN_MAX_INPUTS];
+    int first[PLAN_MAX_INPUTS], second[PLAN_MAX_INPUTS];
     size_t o = 0, prev = 0;
 
-    if (!parsed || n > PLAN_MAX_INPUTS) return -P_ERR_SIG;
-    for (unsigned int i = 0; i < PLAN_MAX_INPUTS; i++) by_input[i] = -1;
+    if (!parsed || n > PLAN_MAX_SIGS) return -P_ERR_SIG;
+    for (unsigned int i = 0; i < PLAN_MAX_INPUTS; i++) first[i] = second[i] = -1;
     for (unsigned int k = 0; k < n; k++) {
         const plan_sig_t *s = &sigs[k];
         const plan_input_t *in;
-        if (s->input >= plan.n_inputs || by_input[s->input] >= 0) return -P_ERR_SIG;
+        if (s->input >= plan.n_inputs || second[s->input] >= 0) return -P_ERR_SIG;
         in = &plan.inputs[s->input];
         if (in->key.depth == 0) return -P_ERR_SIG;
+        /* a second one only where a witness script can hold two of our keys, and for the other key */
+        if (first[s->input] >= 0 && (!is_p2wsh(&in->spk) || !memcmp(sigs[first[s->input]].pubkey, s->pubkey, 33)))
+            return -P_ERR_SIG;
         if (!is_p2tr(&in->spk) ? (s->pubkey[0] != 2 && s->pubkey[0] != 3) || s->sig_len < 9 || s->sig_len > 73
                                : s->pubkey[0] != 0 || (s->sig_len != 64 && s->sig_len != 65))
             return -P_ERR_SIG;
         if (memcmp(points[k], (const uint8_t[33]){0}, 33) && points[k][0] != 2 && points[k][0] != 3) return -P_ERR_SIG;
-        by_input[s->input] = (int)k;
+        *(first[s->input] < 0 ? &first[s->input] : &second[s->input]) = (int)k;
     }
     for (unsigned int i = 0; i < plan.n_inputs; i++) {
-        const plan_sig_t *s;
-        if (by_input[i] < 0) continue;
-        s = &sigs[by_input[i]];
+        if (first[i] < 0) continue;
         memcpy(out_buf + o, in_buf + prev, in_map_end[i] - prev);
         o += in_map_end[i] - prev;
         prev = in_map_end[i];
-        /* every length is below 0xfd, so each compact size is one byte */
-        if (!is_p2tr(&plan.inputs[i].spk)) {
-            out_buf[o++] = 34;
-            out_buf[o++] = 0x02;
-            memcpy(out_buf + o, s->pubkey, 33), o += 33;
-        } else {
-            out_buf[o++] = 1;
-            out_buf[o++] = 0x13;
-        }
-        out_buf[o++] = s->sig_len;
-        memcpy(out_buf + o, s->sig, s->sig_len), o += s->sig_len;
-        if (memcmp(points[by_input[i]], (const uint8_t[33]){0}, 33)) {
-            const int p2tr = is_p2tr(&plan.inputs[i].spk);
-            out_buf[o++] = (uint8_t)(sizeof(exfil_key) + 1 + 33 - p2tr);
-            memcpy(out_buf + o, exfil_key, sizeof(exfil_key)), o += sizeof(exfil_key);
-            out_buf[o++] = 2;
-            memcpy(out_buf + o, s->pubkey + p2tr, 33u - p2tr), o += 33u - p2tr;
-            out_buf[o++] = 33;
-            memcpy(out_buf + o, points[by_input[i]], 33), o += 33;
-        }
+        o = put_sig(o, i, (unsigned int)first[i]);
+        if (second[i] >= 0) o = put_sig(o, i, (unsigned int)second[i]);
     }
     memcpy(out_buf + o, in_buf + prev, in_len - prev);
     o += in_len - prev;

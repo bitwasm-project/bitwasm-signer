@@ -69,9 +69,9 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_review_output() -> ptr` | `core_review_t`, 64 bytes |
 | `signer_display_output() -> ptr` | `core_display_t`, 2968 bytes |
 | `signer_facts_output() -> ptr` | `core_facts_t`, 40 bytes: see [Facts for a second review](#facts-for-a-second-review) |
-| `signer_sigs() -> ptr` | up to 16 x `plan_sig_t` of 108 bytes |
+| `signer_sigs() -> ptr` | up to 32 x `plan_sig_t` of 108 bytes, two for an input that holds two of our keys |
 | `signer_nonces() -> ptr` | anti-exfil, 16 x 33 bytes: per input `1` then the coordinator's `n`, copied from `parser_nonces()`. Used by the next `signer_sign()`, then cleared |
-| `signer_nonce_points() -> ptr` | anti-exfil, 16 x 33 bytes: `Q` for each signature, zero for one made without `n` |
+| `signer_nonce_points() -> ptr` | anti-exfil, 32 x 33 bytes: `Q` for each signature, zero for one made without `n` |
 | `signer_xpub_output() -> ptr` | the account xpub, NUL-terminated, at most 120 |
 | `signer_desc_output() -> ptr` | the output descriptor, NUL-terminated, at most 180 |
 | `signer_mnemonic_output() -> ptr` | a new mnemonic, NUL-terminated, at most 256. Secret: clear it once read |
@@ -158,15 +158,17 @@ each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or
 `pk(KEY)` or `multi(m,KEY,...)` of two or three keys, Y the same or `pkh(KEY)`. That is Liana's
 `or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),...))`, Nunchuk's templates and Keeper's Emergency Key. `n` runs from 1 to
 2^31 - 1 as miniscript takes it, and each key's `/<a;b>/*` is as the wallet numbers it (`<2;3>` for a key's
-second use). Our key has to appear once: a wallet that reuses it on both paths is `FORMAT`. The signer does not
+second use). Our key may appear on both paths, as a reused signer, each time under its own steps: then an input of
+the wallet gets a signature from each, the second key derived from the wallet rather than read from the PSBT, and
+the review still covers it once. The signer does not
 check the transaction's locktime or sequence against `n`: a signature made too early only fails to confirm.
 Without the wallet such an input is signed when its witness script is that shape, hashes to its script and holds
 our key anywhere in it.
 Keys are xpub or tpub, or SLIP-132's Zpub or Vpub, and every origin step is hardened.
 
 It is refused with `FORMAT` for anything else, a key twice, a threshold above the key count or a key on the
-other network, and with `WALLET` unless exactly one key is ours: the seed re-derives it at its origin, chain code
-and all. Our fingerprint on another key is what the wrong passphrase looks like. A BSMS record whose address
+other network, and with `WALLET` unless one key is ours, or for `or_d` one on each path: the seed re-derives it at
+its origin, chain code and all. Our fingerprint on another key is what the wrong passphrase looks like. A BSMS record whose address
 is not the wallet's first receive address is `WALLET` too.
 
 What `signer_multisig_output()` holds is for a person to compare with the coordinator before relying on it,
@@ -285,6 +287,7 @@ original PSBT and leaves every other byte alone.
 | 103 | 1024 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
 | 1127 | 1 | `primary`: for `or_d`, how many of the keys are the primary path's |
 | 1128 | 1 | `threshold2`: for `or_d`, the recovery path's threshold |
+| 1129 | 1 | `ours2`: for `or_d`, our key on the recovery path when `ours` is on the primary too, else 0xff |
 | 1132 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery keys can spend |
 
 ## Signatures are deterministic
