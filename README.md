@@ -16,7 +16,7 @@ bytes on every runtime.</sub>
 | | imports | what it does |
 |---|---:|---|
 | [`parser.wasm`](parser/README.md) | **0** | animated QR (UR) reassembly, PSBT v0 parsing, building a fixed-layout plan, taking signatures back, UR encoding |
-| [`signer.wasm`](signer/docs/abi.md) | **0** | keys, new mnemonics, SeedQR in and out, BIP85 children, BIP32 derivation, re-checking that plan, building what to display, sighash, signing, BIP137 messages, xpub export, finding our addresses |
+| [`signer.wasm`](signer/docs/abi.md) | **0** | keys, new mnemonics, SeedQR in and out, BIP85 children, BIP32 derivation, re-checking that plan, building what to display, sighash, signing, BIP137 messages, xpub export, finding and listing our addresses |
 
 <img src="docs/everywhere.svg" alt="The same bytes run everywhere: bitwasm-signer at the centre, six places it has been run" width="940">
 

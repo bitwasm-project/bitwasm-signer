@@ -39,7 +39,7 @@ private object L {
     const val MS_RECEIVE = 28; const val MS_RECEIVE_CAP = 75; const val MS_DESCRIPTOR = 103; const val MS_DESCRIPTOR_CAP = 1024
 
     const val MAX_INPUTS = 16; const val MAX_OUTPUTS = 16
-    const val XPUB_MAX = 120; const val DESC_MAX = 180; const val PREVTX_MAX = 32768
+    const val XPUB_MAX = 120; const val DESC_MAX = 180; const val ADDRESS_MAX = 75; const val PREVTX_MAX = 32768
 }
 
 private val CORE_ERR = arrayOf(
@@ -394,6 +394,13 @@ class Signer(signerWasm: ByteArray, sha256: String) {
         if (rc >= 0) return AddressPath(rc shr 20, rc and 0xfffff)
         if (rc != -CORE_ERR.indexOf("NOT_FOUND")) throw SignerException("findAddress", -rc)
         return null
+    }
+
+    /** The address at m/purpose'/coin'/account'/chain/index: purpose 49, 84 or 86, chain 0 or 1, index below 100000 */
+    fun address(purpose: Int = 84, account: Int = 0, chain: Int = 0, index: Int = 0): String {
+        val rc = call("signer_address", purpose.toLong(), account.toLong(), chain.toLong(), index.toLong())
+        if (rc != 0) throw SignerException("address", rc)
+        return cstr(call("signer_address_output"), L.ADDRESS_MAX)
     }
 
     /**

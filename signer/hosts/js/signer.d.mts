@@ -107,6 +107,7 @@ export class Signer {
             maxOutputs: number;
             xpubMax: number;
             descMax: number;
+            addressMax: number;
             prevtxMax: number;
         };
     };
@@ -242,6 +243,15 @@ export class Signer {
         chain: number;
         index: number;
     } | null;
+    /** The address at m/purpose'/coin'/account'/chain/index, purpose 49, 84 or 86, chain 0 (receive) or 1
+     *  (change) and index below 100000, so a host can list them. findAddress() goes the other way. */
+    /** @param {{ purpose?: 49 | 84 | 86, account?: number, chain?: number, index?: number }} [opts] */
+    address({ purpose, account, chain, index }?: {
+        purpose?: 49 | 84 | 86;
+        account?: number;
+        chain?: number;
+        index?: number;
+    }): string;
     /** What to show before signing a message with BIP137: the address of m/purpose'/coin'/account'/chain/index
      *  (purpose 49 or 84), and the message, as it is when it is printable ASCII and in hex otherwise.
      *  Approving it permits one messageSign(). */
@@ -333,6 +343,7 @@ export type SignerExports = {
     signer_nonce_points: () => number;
     signer_xpub_output: () => number;
     signer_desc_output: () => number;
+    signer_address_output: () => number;
     signer_init: (testnet: number) => number;
     signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number;
     signer_seed_from_seedqr: (qrLen: number, passLen: number) => number;
@@ -346,6 +357,7 @@ export type SignerExports = {
     signer_sign: () => number;
     signer_xpub: (purpose: number, account: number) => number;
     signer_find_address: (len: number, account: number, count: number) => number;
+    signer_address: (purpose: number, account: number, chain: number, index: number) => number;
     signer_mnemonic_output: () => number;
     signer_mnemonic_from_entropy: (len: number) => number;
     signer_mnemonic_from_dice: (len: number, words: number) => number;

@@ -1,4 +1,4 @@
-/* Finding which of our addresses an address is, against BIP84's and BIP86's vectors */
+/* Finding which of our addresses an address is, and the address at an index, against BIP84's and BIP86's vectors */
 #include <stdio.h>
 #include <string.h>
 #include "core.h"
@@ -23,13 +23,41 @@ static int find(const char *addr, uint32_t count) {
     return core_find_address(addr, strlen(addr), 0, count);
 }
 
+/* core_address agrees with the vector and with core_find_address */
+static int at(unsigned int purpose, uint32_t chain, uint32_t index, const char *want) {
+    char got[ADDRESS_MAX];
+    return core_address(purpose, 0, chain, index, got) == CORE_OK && !strcmp(got, want) &&
+           find(want, index + 1) == (int)(chain << 20 | index);
+}
+
 int main(void) {
     uint8_t seed[64];
     pbkdf2_hmac_sha512((const uint8_t *)MN, sizeof(MN) - 1, (const uint8_t *)"mnemonic", 8, 2048, seed);
 
     CHECK(core_init(CORE_MAINNET), "init");
     CHECK(find("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu", 10) == -CORE_ERR_NO_SEED, "no seed");
+    {
+        char got[ADDRESS_MAX] = "x";
+        CHECK(core_address(84, 0, 0, 0, got) == CORE_ERR_NO_SEED && !got[0], "address, no seed");
+    }
     CHECK(core_load_seed(seed), "load");
+
+    CHECK(at(84, 0, 0, "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"), "address BIP84 0/0");
+    CHECK(at(84, 0, 1, "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"), "address BIP84 0/1");
+    CHECK(at(84, 1, 0, "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"), "address BIP84 1/0");
+    CHECK(at(86, 0, 0, "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"), "address BIP86 0/0");
+    CHECK(at(86, 1, 0, "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7"), "address BIP86 1/0");
+    CHECK(at(49, 1, 0, "34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7"), "address BIP49 1/0");
+    {
+        char got[ADDRESS_MAX] = "x";
+        CHECK(core_address(44, 0, 0, 0, got) == CORE_ERR_FORMAT && !got[0], "address, legacy refused");
+        CHECK(core_address(48, 0, 0, 0, got) == CORE_ERR_FORMAT, "address, multisig refused");
+        CHECK(core_address(84, 0, 2, 0, got) == CORE_ERR_FORMAT, "address, chain 2");
+        CHECK(core_address(84, 0, 0, 100000, got) == CORE_ERR_FORMAT, "address, index we would not call ours");
+        CHECK(core_address(84, 0x80000000u, 0, 0, got) == CORE_ERR_FORMAT, "address, hardened account");
+        CHECK(core_address(84, 1, 0, 0, got) == CORE_OK && strcmp(got, "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"),
+              "address, another account");
+    }
 
     CHECK(find("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu", 10) == 0, "BIP84 0/0");
     CHECK(find("bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", 10) == 1, "BIP84 0/1");
@@ -70,6 +98,8 @@ int main(void) {
     CHECK(core_init(CORE_TESTNET) && core_load_seed(seed), "load testnet");
     CHECK(find("tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl", 10) == 0, "testnet BIP84 0/0");
     CHECK(find("2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2", 10) == 0, "BIP49's own testnet vector, m/49'/1'/0'/0/0");
+    CHECK(at(84, 0, 0, "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl"), "address testnet BIP84 0/0");
+    CHECK(at(49, 0, 0, "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2"), "address testnet BIP49 0/0");
     CHECK(find("bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu", 10) == -CORE_ERR_FORMAT, "mainnet on testnet");
 
     core_unload();

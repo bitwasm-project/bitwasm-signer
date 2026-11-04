@@ -602,6 +602,27 @@ int core_sign(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_INPUTS],
     return rc;
 }
 
+/* The scriptPubKey of child i of a chain whose public key is cpub, for purpose 49, 84 or 86. Returns its
+ * length, or 0 */
+static size_t child_spk(const bip32_node_t *chain, const uint8_t cpub[33], unsigned int purpose, uint32_t i,
+                        uint8_t spk[34]) {
+    bip32_node_t child;
+    secp256k1_keypair kp;
+    uint8_t pub[33];
+    size_t n = 0;
+
+    if (bip32_child(chain, cpub, i, &child)) {
+        if (purpose != 86 && bip32_pubkey(ctx, child.key, pub)) {
+            n = wpkh_spk(pub, purpose == 49, spk);
+        } else if (purpose == 86 && taproot_tweak(child.key, spk + 2, &kp)) {
+            spk[0] = 0x51, spk[1] = 32, n = 34;
+        }
+    }
+    wipe(&child, sizeof(child));
+    wipe(&kp, sizeof(kp));
+    return n;
+}
+
 int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t count) {
     static const char b58[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     const int testnet = network == CORE_TESTNET;
@@ -609,9 +630,8 @@ int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t c
     int upper = 0, lower = 0, other = 0, rc = -CORE_ERR_NOT_FOUND;
     unsigned int purpose, need;
     uint32_t path[3];
-    bip32_node_t acct, chain, child;
-    secp256k1_keypair kp;
-    uint8_t spk[34], pub[33], cpub[33];
+    bip32_node_t acct, chain;
+    uint8_t spk[34], cpub[33];
     size_t n;
 
     if (!seed_loaded) return -CORE_ERR_NO_SEED;
@@ -634,7 +654,6 @@ int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t c
     want[len] = 0;
     if (other || (upper && lower)) return -CORE_ERR_FORMAT;
     if (len != need) return -CORE_ERR_NOT_FOUND; /* P2WSH, a P2SH of something else, or cut short: not ours */
-    n = purpose == 49 ? 23 : purpose == 84 ? 22 : 34;
 
     /* The chain's public key once, not once a child: it is half the work of each unhardened step */
     path[0] = purpose | H, path[1] = (uint32_t)network | H, path[2] = account | H;
@@ -642,22 +661,33 @@ int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t c
     for (uint32_t c = 0; rc == -CORE_ERR_NOT_FOUND && c < 2; c++) {
         if (!bip32_derive(ctx, &acct, &c, 1, &chain) || !bip32_pubkey(ctx, chain.key, cpub)) rc = -CORE_ERR_CRYPTO;
         for (uint32_t i = 0; rc == -CORE_ERR_NOT_FOUND && i < count; i++) {
-            int ok = bip32_child(&chain, cpub, i, &child);
-            if (ok && purpose != 86) {
-                ok = bip32_pubkey(ctx, child.key, pub);
-                wpkh_spk(pub, purpose == 49, spk);
-            } else if (ok) {
-                ok = taproot_tweak(child.key, spk + 2, &kp);
-                spk[0] = 0x51, spk[1] = 32;
-            }
-            if (!ok) rc = -CORE_ERR_CRYPTO;
+            n = child_spk(&chain, cpub, purpose, i, spk);
+            if (!n) rc = -CORE_ERR_CRYPTO;
             else if (address_encode(spk, n, testnet, got) && !strcmp(got, want)) rc = (int)(c << 20 | i);
         }
     }
     wipe(&acct, sizeof(acct));
     wipe(&chain, sizeof(chain));
-    wipe(&child, sizeof(child));
-    wipe(&kp, sizeof(kp));
+    return rc;
+}
+
+int core_address(unsigned int purpose, uint32_t account, uint32_t chain, uint32_t index, char out[ADDRESS_MAX]) {
+    uint32_t path[4];
+    bip32_node_t node;
+    uint8_t spk[34], cpub[33];
+    size_t n = 0;
+    int rc = CORE_ERR_CRYPTO;
+
+    out[0] = 0;
+    if (!seed_loaded) return CORE_ERR_NO_SEED;
+    if ((purpose != 49 && purpose != 84 && purpose != 86) || account >= H || chain > 1 || index >= MAX_ADDRESS_INDEX)
+        return CORE_ERR_FORMAT;
+    path[0] = purpose | H, path[1] = (uint32_t)network | H, path[2] = account | H, path[3] = chain;
+    if (bip32_derive(ctx, &master, path, 4, &node) && bip32_pubkey(ctx, node.key, cpub))
+        n = child_spk(&node, cpub, purpose, index, spk);
+    if (n && address_encode(spk, n, network == CORE_TESTNET, out)) rc = CORE_OK;
+    wipe(&node, sizeof(node));
+    if (rc) wipe(out, ADDRESS_MAX);
     return rc;
 }
 

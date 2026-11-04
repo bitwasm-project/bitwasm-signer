@@ -208,6 +208,23 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   }
 }
 
+// --- the address at an index, the other way round from findAddress
+{
+  check("address BIP84 0/1", S.address({ chain: 0, index: 1 }), "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g");
+  check("address BIP86 0/1", S.address({ purpose: 86, index: 1 }), "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh");
+  check("address BIP49 change 1/0", S.address({ purpose: 49, chain: 1 }), "34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7");
+  for (const [what, opts, err] of [["legacy", { purpose: 44 }, SignerError], ["chain 2", { chain: 2 }, SignerError],
+                                   ["an index we would not call ours", { index: 100000 }, SignerError],
+                                   ["an index JavaScript would wrap", { index: 2 ** 32 }, RangeError]]) {
+    try {
+      S.address(opts);
+      ok(`address refuses ${what}`, false);
+    } catch (e) {
+      ok(`address refuses ${what}`, e instanceof err);
+    }
+  }
+}
+
 // --- BIP49: P2SH-P2WPKH inputs and change, beside P2WPKH (Core signs the same PSBTs: check-core-diff)
 {
   const P2 = await Signer.load(signerWasm, pin);

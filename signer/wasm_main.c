@@ -18,7 +18,7 @@
 
 /* Three return conventions, and which one a function uses follows from what it does:
  *   init / seed / seedqr / load_seed / set_prevtx  1 on success, 0 on failure (they can only fail one way)
- *   review / display / facts / xpub / message / multisig_load* CORE_OK (0) on success, CORE_ERR_* otherwise
+ *   review / display / facts / xpub / address / message / multisig_load* CORE_OK (0) on success, CORE_ERR_* otherwise
  *   sign                                  the number of signatures, or -CORE_ERR_*
  *   find_address                          chain << 20 | index, or -CORE_ERR_*
  *   account_cbor / multisig_cbor          the CBOR's length, or -CORE_ERR_*
@@ -40,6 +40,7 @@ static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_INPUTS][33];
 /* a mnemonic or SeedQR || passphrase, a seed, entropy or dice, a multisig setup; always wiped after */
 static uint8_t in[1024];
 static char xpub[CORE_XPUB_MAX], desc[CORE_DESC_MAX];
+static char address[ADDRESS_MAX];
 static char mnemonic[256]; /* a newly made mnemonic, until the host has read it */
 static uint8_t seedqr[96]; /* a SeedQR made from a mnemonic, likewise */
 _Static_assert(CORE_MESSAGE_MAX <= sizeof(in), "a message to sign has to fit in the input buffer");
@@ -87,6 +88,9 @@ char *EXPORT(signer_xpub_output)(void) {
 }
 char *EXPORT(signer_desc_output)(void) {
     return desc;
+}
+char *EXPORT(signer_address_output)(void) {
+    return address;
 }
 char *EXPORT(signer_mnemonic_output)(void) {
     return mnemonic;
@@ -219,6 +223,10 @@ int EXPORT(signer_xpub)(unsigned int purpose, unsigned int account) {
     int rc = core_account_xpub(purpose, account, xpub, desc);
     if (rc) wipe(xpub, sizeof(xpub)), wipe(desc, sizeof(desc));
     return rc;
+}
+
+int EXPORT(signer_address)(unsigned int purpose, unsigned int account, unsigned int chain, unsigned int index) {
+    return core_address(purpose, account, chain, index, address);
 }
 
 /* in holds the address. Nothing secret, but cleared like every other use of in */

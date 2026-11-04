@@ -74,6 +74,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_nonce_points() -> ptr` | anti-exfil, 16 x 33 bytes: `Q` for each signature, zero for one made without `n` |
 | `signer_xpub_output() -> ptr` | the account xpub, NUL-terminated, at most 120 |
 | `signer_desc_output() -> ptr` | the output descriptor, NUL-terminated, at most 180 |
+| `signer_address_output() -> ptr` | the address `signer_address` made, NUL-terminated, at most 75 |
 | `signer_mnemonic_output() -> ptr` | a new mnemonic, NUL-terminated, at most 256. Secret: clear it once read |
 | `signer_seedqr_output() -> ptr` | a SeedQR made from a mnemonic, at most 96 bytes. Secret: clear it once read |
 | `signer_message_output() -> ptr` | `core_message_t`, 1101 bytes: what to show before signing a message |
@@ -107,6 +108,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 512 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 49 or 84; see below |
 | `signer_message_sign()` | 0 on success, `NOT_REVIEWED` unless it is the message and key the last review showed |
 | `signer_xpub(purpose, account)` | 0 on success. m/purpose'/coin'/account' with `purpose` 49 (`sh(wpkh())`), 84 (`wpkh()`) or 86 (`tr()`), or m/48'/coin'/account'/2' with `purpose` 48 (the key expression for `wsh(sortedmulti())`), and `account` below 2^31, otherwise `FORMAT`, with the xpub and descriptor buffers emptied |
+| `signer_address(purpose, account, chain, index)` | 0 on success. The address at m/purpose'/coin'/account'/chain/index, `purpose` 49, 84 or 86, `chain` 0 (receive) or 1 (change), `index` below the 100000 the review would call ours, otherwise `FORMAT`, with the buffer emptied. For listing addresses; `signer_find_address` goes the other way |
 | `signer_find_address(len, account, count)` | where the address in `signer_input()` is on m/purpose'/coin'/account', receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there. See below |
 | `signer_fingerprint()` | the master fingerprint, or 0 when no seed is loaded |
 | `signer_multisig_load(len)` | 0 on success. Registers the multisig in the input buffer; see below |

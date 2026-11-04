@@ -36,7 +36,7 @@ private enum L {
     static let msReceive = 28, msReceiveCap = 75, msDescriptor = 103, msDescriptorCap = 1024
 
     static let maxInputs = 16, maxOutputs = 16
-    static let xpubMax = 120, descMax = 180, prevtxMax = 32768
+    static let xpubMax = 120, descMax = 180, addressMax = 75, prevtxMax = 32768
 }
 
 private let coreErr = [
@@ -453,6 +453,13 @@ public final class Signer {
         if rc >= 0 { return AddressPath(chain: Int(rc >> 20), index: Int(rc & 0xfffff)) }
         if rc != -Int32(coreErr.firstIndex(of: "NOT_FOUND")!) { throw SignerError.refused(stage: "findAddress", code: -rc) }
         return nil
+    }
+
+    /// The address at m/purpose'/coin'/account'/chain/index: purpose 49, 84 or 86, chain 0 or 1, index below 100000
+    public func address(purpose: UInt32 = 84, account: UInt32 = 0, chain: UInt32 = 0, index: UInt32 = 0) throws -> String {
+        let rc = try call("signer_address", [.i32(purpose), .i32(account), .i32(chain), .i32(index)])
+        guard rc == 0 else { throw SignerError.refused(stage: "address", code: rc) }
+        return try cstr(Int(try call("signer_address_output")), L.addressMax)
     }
 
     /// What to show before signing a message with BIP137: the address of m/purpose'/coin'/account'/chain/index

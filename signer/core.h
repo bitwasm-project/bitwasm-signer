@@ -98,6 +98,10 @@ int core_bip85_mnemonic(unsigned int words, uint32_t index, char *out, size_t ca
  * index, or -CORE_ERR_*. 3/2 (P2SH) is purpose 49, bc1q/tb1q 84, bc1p/tb1p 86; any other is CORE_ERR_FORMAT */
 int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t count);
 
+/* The address at m/purpose'/coin'/account'/chain/index, purpose 49, 84 or 86, chain 0 or 1 and index below
+ * the 100000 we would call ours, so a host can list them. CORE_OK, or CORE_ERR_*, out emptied */
+int core_address(unsigned int purpose, uint32_t account, uint32_t chain, uint32_t index, char out[ADDRESS_MAX]);
+
 /* The account xpub (m/purpose'/coin'/account') and its sh(wpkh()), wpkh() or tr() descriptor, so the PC
  * side can be watch-only. purpose is 48, 49, 84 or 86 and account below 2^31; 48 is m/48'/coin'/account'/2'
  * (P2WSH) and gives the key expression for sortedmulti(). CORE_OK, or _FORMAT / _NO_SEED */
