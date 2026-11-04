@@ -137,6 +137,8 @@ jobs:
           bitcoind --version | head -1
       - name: The parse and the signatures equal Bitcoin Core's
         run: make check-core-diff
+      - name: The or_d shapes spend on regtest with our signature
+        run: make check-core-spend
 
       - name: Preserve the tested modules for a tagged release
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
