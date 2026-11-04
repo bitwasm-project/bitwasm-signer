@@ -16,7 +16,7 @@ const L = {
   },
   sig: { size: 108, input: 0, pubkey: 1, sigLen: 34, sig: 35 },
   message: { size: 1101, address: 0, textKind: 75, text: 76, textCap: 1025 },
-  multisig: { size: 732, threshold: 0, n: 1, ours: 2, fingerprints: 4, receive: 16, receiveCap: 75, descriptor: 91, descriptorCap: 640 },
+  multisig: { size: 736, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 16, receiveCap: 75, descriptor: 91, descriptorCap: 640, older: 732 },
   limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, prevtxMax: 32768 },
 };
 
@@ -549,9 +549,9 @@ export class Signer {
   }
 
   /** Registers a P2WSH sortedmulti wallet of at most three keys, from a descriptor, a BSMS 1.0 record or a
-   *  Coldcard setup file. Show what this returns, the receive address above all, before trusting it: from
-   *  then on the wallet's inputs are signed only when they are the wallet's, and its outputs at our paths are
-   *  change. Loading another seed unloads it. */
+   *  Coldcard setup file, or a Liana wallet from its descriptor. Show what this returns, the receive address
+   *  above all, before trusting it: from then on the wallet's inputs are signed only when they are the
+   *  wallet's, and its outputs at our paths are change. Loading another seed unloads it. */
   /** @param {string | Uint8Array} text */
   multisigLoad(text) {
     const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
@@ -579,9 +579,13 @@ export class Signer {
       return new TextDecoder().decode(raw.subarray(0, nul < 0 ? raw.length : nul));
     };
     const n = v.getUint8(m.n);
+    const liana = v.getUint8(m.kind) === 1;
     return {
+      kind: liana ? "liana" : "sortedmulti",
       threshold: v.getUint8(m.threshold),
       ours: v.getUint8(m.ours),
+      // Liana: ours is 0 for the primary key, 1 for the recovery key that can spend after this many blocks
+      older: liana ? v.getUint16(m.older, true) : 0,
       fingerprints: [...Array(n)].map((_, i) => (v.getUint32(m.fingerprints + 4 * i, true) >>> 0).toString(16).padStart(8, "0")),
       receive: read(m.receive, m.receiveCap),
       descriptor: read(m.descriptor, m.descriptorCap),

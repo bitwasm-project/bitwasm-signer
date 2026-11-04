@@ -169,6 +169,7 @@ static int hdkey(cbor_r_t *r, int testnet, ms_key_t *key) {
     uint32_t seen = 0;
     int have_pub = 0, have_chain = 0, have_coin_info = 0, have_origin = 0, have_children = 0, have_parent = 0;
     memset(key, 0, sizeof(*key));
+    key->child[1] = 1; /* keypath_children() accepts only receive 0, change 1 */
     if (!tag(r, 303) || !map_start(r, &n)) return 0;
     key->ser[0] = 0x04;
     key->ser[1] = testnet ? 0x35 : 0x88;

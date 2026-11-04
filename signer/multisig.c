@@ -76,10 +76,13 @@ static int xpub(cur_t *c, int testnet, ms_key_t *k) {
            secp256k1_ec_pubkey_parse(secp256k1_context_static, &pk, k->ser + 45, 33);
 }
 
-/* [fp/a'/b'/...]xpub, then its children: <0;1>, ** as BSMS writes it, or 0 with change on 1 by convention */
+/* [fp/a'/b'/...]xpub, then its children: <a;b>, ** as BSMS writes it, or 0 with change on 1 by convention */
 static int key_expr(cur_t *c, int testnet, ms_key_t *k) {
-    return eat(c, "[") && hex_fp(c, &k->fingerprint) && origin(c, k) && eat(c, "]") && xpub(c, testnet, k) &&
-           (eat(c, "/<0;1>/*") || eat(c, "/**") || eat(c, "/0/*"));
+    if (!eat(c, "[") || !hex_fp(c, &k->fingerprint) || !origin(c, k) || !eat(c, "]") || !xpub(c, testnet, k)) return 0;
+    k->child[0] = 0, k->child[1] = 1;
+    if (eat(c, "/**") || eat(c, "/0/*")) return 1;
+    return eat(c, "/<") && number(c, &k->child[0]) && eat(c, ";") && number(c, &k->child[1]) && eat(c, ">/*") &&
+           k->child[0] != k->child[1];
 }
 
 static uint64_t desc_polymod(uint64_t c, unsigned int v) {
@@ -114,16 +117,27 @@ static int desc_checksum(const char *s, size_t n, char out[9]) {
     return 1;
 }
 
-/* wsh(sortedmulti(k,KEY,...)) and, if there is one, a checksum that has to hold */
+/* wsh(sortedmulti(k,KEY,...)) or Liana's wsh(or_d(pk(KEY),and_v(v:pkh(KEY),older(n)))) and, if there is
+ * one, a checksum that has to hold. older() is in blocks, as BIP68 counts them in 16 bits */
 static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
     size_t start = c->i;
     uint32_t k;
     char sum[9];
-    if (!eat(c, "wsh(sortedmulti(") || !number(c, &k)) return 0;
-    for (w->n = 0; eat(c, ",");)
-        if (w->n == MS_MAX_KEYS || !key_expr(c, testnet, &w->keys[w->n++])) return 0;
-    if (!eat(c, "))") || k < 1 || k > w->n) return 0;
-    w->threshold = (uint8_t)k;
+    if (eat(c, "wsh(or_d(pk(")) {
+        if (!key_expr(c, testnet, &w->keys[0]) || !eat(c, "),and_v(v:pkh(") || !key_expr(c, testnet, &w->keys[1]) ||
+            !eat(c, "),older(") || !number(c, &k) || !eat(c, "))))") || k < 1 || k > 0xffff)
+            return 0;
+        w->kind = MS_LIANA, w->threshold = 1, w->n = 2, w->older = (uint16_t)k;
+    } else {
+        if (!eat(c, "wsh(sortedmulti(") || !number(c, &k)) return 0;
+        for (w->n = 0; eat(c, ",");) {
+            ms_key_t *key = &w->keys[w->n];
+            if (w->n == MS_MAX_KEYS || !key_expr(c, testnet, key) || key->child[0] != 0 || key->child[1] != 1) return 0;
+            w->n++;
+        }
+        if (!eat(c, "))") || k < 1 || k > w->n) return 0;
+        w->threshold = (uint8_t)k;
+    }
     if (!eat(c, "#")) return 1;
     if (!desc_checksum(c->s + start, c->i - 1 - start, sum) || c->n - c->i < 8 || memcmp(c->s + c->i, sum, 8)) return 0;
     c->i += 8;
@@ -189,6 +203,7 @@ static int setup_file(cur_t *c, int testnet, ms_wallet_t *w) {
             if (w->n == MS_MAX_KEYS || !at.depth || !hex_fp(&l, &k->fingerprint) || !eat(&l, ":")) return 0;
             while (eat(&l, " "));
             k->depth = at.depth;
+            k->child[1] = 1;
             memcpy(k->path, at.path, sizeof(at.path));
             if (!xpub(&l, testnet, k) || l.i != l.n) return 0;
             w->n++;
@@ -213,17 +228,41 @@ int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char addres
     return ok;
 }
 
+size_t ms_older(uint32_t n, uint8_t out[4]) {
+    size_t len = 1;
+    if (n <= 16) return out[0] = (uint8_t)(0x50 + n), 1;
+    for (uint32_t v = n; v; v >>= 8) out[len++] = (uint8_t)v;
+    if (out[len - 1] & 0x80) out[len++] = 0; /* the top bit would make it negative */
+    out[0] = (uint8_t)(len - 1);
+    return len;
+}
+
+/* <A> CHECKSIG IFDUP NOTIF DUP HASH160 <HASH160(B)> EQUALVERIFY CHECKSIGVERIFY <n> CSV ENDIF */
+static void liana_wscript(const uint8_t a[33], const uint8_t b[33], uint16_t older, plan_wscript_t *out) {
+    static const uint8_t mid[] = {0xac, 0x73, 0x64, 0x76, 0xa9, 0x14};
+    uint8_t *s = out->bytes;
+    s[0] = 33;
+    memcpy(s + 1, a, 33);
+    memcpy(s + 34, mid, sizeof(mid));
+    hash160(b, 33, s + 40);
+    s[60] = 0x88, s[61] = 0xad;
+    out->len = (uint8_t)(62 + ms_older(older, s + 62));
+    s[out->len++] = 0xb2, s[out->len++] = 0x68;
+}
+
 int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscript_t *out) {
     uint8_t keys[MS_MAX_KEYS][33], cc[32], mid[33], t[33];
     memset(out, 0, sizeof(*out));
     for (unsigned int i = 0; i < w->n; i++) {
-        const uint8_t *ser = w->keys[i].ser;
-        if (!bip32_pub_child(ser + 45, ser + 13, chain, mid, cc) || !bip32_pub_child(mid, cc, index, keys[i], cc))
+        const ms_key_t *k = &w->keys[i];
+        if (!bip32_pub_child(k->ser + 45, k->ser + 13, k->child[chain], mid, cc) ||
+            !bip32_pub_child(mid, cc, index, keys[i], cc))
             return 0;
-        for (unsigned int j = i; j > 0 && memcmp(keys[j - 1], keys[j], 33) > 0; j--) {
+        for (unsigned int j = i; w->kind == MS_SORTEDMULTI && j > 0 && memcmp(keys[j - 1], keys[j], 33) > 0; j--) {
             memcpy(t, keys[j], 33), memcpy(keys[j], keys[j - 1], 33), memcpy(keys[j - 1], t, 33);
         }
     }
+    if (w->kind == MS_LIANA) return liana_wscript(keys[0], keys[1], w->older, out), 1;
     out->bytes[out->len++] = (uint8_t)(0x50 + w->threshold);
     for (unsigned int i = 0; i < w->n; i++) {
         out->bytes[out->len++] = 33;
@@ -252,32 +291,52 @@ static void decimal(uint32_t v, char out[11]) {
     out[o] = 0;
 }
 
-size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]) {
+/* A key as [fp/a'h/...]xpub/<a;b> followed by its wildcard */
+static size_t put_key(char *out, size_t o, const ms_key_t *k, int testnet) {
     char num[11], x[BASE58CHECK_MAX_OUT];
     uint8_t ser[78];
-    size_t o = put(out, 0, "wsh(sortedmulti(");
-    decimal(w->threshold, num);
+    o = put(out, o, "[");
+    for (int d = 0; d < 8; d++) num[d] = "0123456789abcdef"[k->fingerprint >> (28 - 4 * d) & 15];
+    num[8] = 0;
     o = put(out, o, num);
-    for (unsigned int i = 0; i < w->n; i++) {
-        const ms_key_t *k = &w->keys[i];
-        o = put(out, o, ",[");
-        for (int d = 0; d < 8; d++) num[d] = "0123456789abcdef"[k->fingerprint >> (28 - 4 * d) & 15];
-        num[8] = 0;
+    for (unsigned int d = 0; d < k->depth; d++) {
+        decimal(k->path[d] & ~H, num);
+        o = put(out, o, "/");
         o = put(out, o, num);
-        for (unsigned int d = 0; d < k->depth; d++) {
-            decimal(k->path[d] & ~H, num);
-            o = put(out, o, "/");
-            o = put(out, o, num);
-            o = put(out, o, "h");
-        }
-        o = put(out, o, "]");
-        memcpy(ser, k->ser, sizeof(ser));
-        memcpy(ser, testnet ? "\x04\x35\x87\xcf" : "\x04\x88\xb2\x1e", 4);
-        base58check_data(ser, sizeof(ser), x);
-        o = put(out, o, x);
-        o = put(out, o, "/<0;1>/*");
+        o = put(out, o, "h");
     }
-    o = put(out, o, "))");
+    o = put(out, o, "]");
+    memcpy(ser, k->ser, sizeof(ser));
+    memcpy(ser, testnet ? "\x04\x35\x87\xcf" : "\x04\x88\xb2\x1e", 4);
+    base58check_data(ser, sizeof(ser), x);
+    o = put(out, o, x);
+    for (int c = 0; c < 2; c++) {
+        decimal(k->child[c], num);
+        o = put(out, o, c ? ";" : "/<");
+        o = put(out, o, num);
+    }
+    return put(out, o, ">/*");
+}
+
+size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]) {
+    char num[11];
+    size_t o;
+    if (w->kind == MS_LIANA) {
+        o = put(out, 0, "wsh(or_d(pk(");
+        o = put_key(out, o, &w->keys[0], testnet);
+        o = put(out, o, "),and_v(v:pkh(");
+        o = put_key(out, o, &w->keys[1], testnet);
+        o = put(out, o, "),older(");
+        decimal(w->older, num);
+        o = put(out, o, num);
+        o = put(out, o, "))))");
+    } else {
+        o = put(out, 0, "wsh(sortedmulti(");
+        decimal(w->threshold, num);
+        o = put(out, o, num);
+        for (unsigned int i = 0; i < w->n; i++) o = put_key(out, put(out, o, ","), &w->keys[i], testnet);
+        o = put(out, o, "))");
+    }
     if (o + 9 >= MS_DESC_MAX || !desc_checksum(out, o, num)) return 0;
     out[o++] = '#';
     memcpy(out + o, num, 9);

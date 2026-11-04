@@ -6,6 +6,7 @@ Expectations come from how each PSBT was built (which inputs and outputs are our
 Also converts Bitcoin Core's rpc_psbt.json to binary files."""
 import base64, hashlib, json, os, sys
 from embit import bip32, script
+from embit.descriptor import Descriptor
 from embit.psbt import PSBT, DerivationPath
 from embit.transaction import Transaction, TransactionInput, TransactionOutput
 
@@ -155,6 +156,49 @@ build("own_with_p2wsh_2of4_input", [(A + "/0/0", 100000, 0, True), ("m/48h/0h/1h
       [(None, 100000), (A + "/1/0", 29000)])
 build("own_with_foreign_input", [(A + "/0/0", 100000, 0, True), (None, 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
+
+
+# Liana: ours the primary key on chains 0 and 1, or the recovery key on 2 and 3 as Liana numbers a key's second
+# use, beside the first cosigner. One input of ours, paying out plus change; the recovery spend waits older(n)
+def build_liana(name, ours_primary, older):
+    xpub = lambda k: "[%s%s]%s" % (k.my_fingerprint.hex(), W[1:], k.derive(W).to_public().to_base58())
+    chains = (0, 1) if ours_primary else (2, 3)
+
+    def wallet(chain):
+        a, b = "%s/%d/*" % (xpub(root), chain), "%s/%d/*" % (xpub(COSIGNERS[0]), chain - chains[0])
+        primary, recovery = (a, b) if ours_primary else (b, a)
+        return Descriptor.from_string("wsh(or_d(pk(%s),and_v(v:pkh(%s),older(%d))))" % (primary, recovery, older)).derive(0)
+
+    def fill(o, chain):
+        o.witness_script = wallet(chain).witness_script()
+        o.bip32_derivations[key("%s/%d/0" % (W, chain))] = DerivationPath(FP, path_list("%s/%d/0" % (W, chain)))
+        c = COSIGNERS[0].derive("%s/%d/0" % (W, chain - chains[0]))
+        o.bip32_derivations[c.key.get_public_key()] = DerivationPath(COSIGNERS[0].my_fingerprint,
+                                                                     path_list("%s/%d/0" % (W, chain - chains[0])))
+
+    seq = 0xFFFFFFFD if ours_primary else older
+    s_in, s_change = wallet(chains[0]).script_pubkey(), wallet(chains[1]).script_pubkey()
+    ptx = prev_tx(s_in, 100000, 0, 0x40)
+    pay = script.p2wpkh(key("m/1h/0"))
+    psbt = PSBT(Transaction(version=2, vin=[TransactionInput(ptx.txid(), 0, sequence=seq)],
+                            vout=[TransactionOutput(60000, pay), TransactionOutput(39000, s_change)]))
+    psbt.inputs[0].witness_utxo = TransactionOutput(100000, s_in)
+    fill(psbt.inputs[0], chains[0])
+    fill(psbt.outputs[1], chains[1])
+    open(os.path.join(out_dir, name + ".psbt"), "wb").write(psbt.serialize())
+    ours = "%s/%d/0" % (W, chains[0])
+    expected = {"fingerprint": int.from_bytes(FP, "big"), "tx_version": 2, "locktime": 0,
+                "inputs": [{"prev_txid": bytes(reversed(ptx.txid())).hex(), "prev_vout": 0, "sequence": seq,
+                            "amount": 100000, "spk": s_in.data.hex(), "key": keypath(ours), "sighash_type": 1,
+                            "wscript": wallet(chains[0]).witness_script().data.hex(), "has_prevtx": False}],
+                "outputs": [{"amount": 60000, "spk": pay.data.hex(), "key": None},
+                            {"amount": 39000, "spk": s_change.data.hex(), "key": keypath("%s/%d/0" % (W, chains[1]))}],
+                "pubkeys": [key(ours).sec().hex()]}
+    json.dump(expected, open(os.path.join(out_dir, name + ".json"), "w"), indent=1)
+
+
+build_liana("own_liana_primary_1in", True, 52596)
+build_liana("own_liana_recovery_1in", False, 144)
 
 vectors = json.load(open(sys.argv[1]))
 for kind in ("invalid", "invalid_with_msg", "valid"):

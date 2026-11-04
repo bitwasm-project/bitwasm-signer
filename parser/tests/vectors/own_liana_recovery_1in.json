@@ -1,0 +1,53 @@
+{
+ "fingerprint": 1942346250,
+ "tx_version": 2,
+ "locktime": 0,
+ "inputs": [
+  {
+   "prev_txid": "bc67016a8d82ec308e27046a632e1e17cd8f5e799a339179547cf661fc8442bf",
+   "prev_vout": 0,
+   "sequence": 144,
+   "amount": 100000,
+   "spk": "00201d8f9aef48b177bd93da5009a2c5087be5ee60c1992f0ea051ba4ab056d2333e",
+   "key": {
+    "fingerprint": 1942346250,
+    "path": [
+     2147483696,
+     2147483648,
+     2147483648,
+     2147483650,
+     2,
+     0
+    ]
+   },
+   "sighash_type": 1,
+   "wscript": "210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815958a81ac736476a9144b47031bbf50a9b3b7be4ecc548e0637eee2434888ad029000b268",
+   "has_prevtx": false
+  }
+ ],
+ "outputs": [
+  {
+   "amount": 60000,
+   "spk": "0014a5a739ef69cf8c068e94456322671139dab876ea",
+   "key": null
+  },
+  {
+   "amount": 39000,
+   "spk": "002035d90ba0985584144f259babfb3827ca33a034d874343c06b25bf395bfbbd2ec",
+   "key": {
+    "fingerprint": 1942346250,
+    "path": [
+     2147483696,
+     2147483648,
+     2147483648,
+     2147483650,
+     3,
+     0
+    ]
+   }
+  }
+ ],
+ "pubkeys": [
+  "03e762c58a58500170daf6a9c739087445045c25b01eb1960e7f7ec3b770d5125c"
+ ]
+}

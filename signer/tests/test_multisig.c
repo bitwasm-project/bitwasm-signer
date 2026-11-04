@@ -36,10 +36,122 @@ static int checks, failures;
 #define CHECKSUM "d9p6ar8k"
 #define RECEIVE0 "bc1qea2gkgeszr7wm66x2ejkgdxm9nhg9462sszn75zmkhazev0t02vs70kkll"
 
+/* Liana: ours primary with a year's recovery; ours the recovery on <2;3>, as Liana numbers a key's second use; and
+ * a timelock short enough to be OP_16. Checksums, addresses and scripts from Core's getdescriptorinfo,
+ * deriveaddresses and getaddressinfo */
+#define LIANA1 "wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(52596))))"
+#define LIANA1_SUM "49ltg9qz"
+#define LIANA1_RECEIVE0 "bc1qvyescgnual500mg9hygc99t5d3tmn6wmtrlh6dnq72pflh5svnmqaf0qnf"
+#define LIANA1_RECEIVE0_WS                                                                                             \
+    "2103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0ac736476a914a4181cd34eeca10b68629756cd51360d" \
+    "5185a37088ad0374cd00b268"
+#define LIANA1_RECEIVE0_SPK "002061330c227cefe8f7ed05b9118295746c57b9e9db58ff7d3660f2829fde9064f6"
+#define LIANA1_CHANGE0_SPK "0020487c188623b2be1ec355add828ce149a89c943353a0513a07d929604453b89f9"
+#define LIANA2 "wsh(or_d(pk(" K1 "/<0;1>/*),and_v(v:pkh(" K0 "/<2;3>/*),older(144))))"
+#define LIANA2_SUM "l98cz9q9"
+#define LIANA2_RECEIVE0 "bc1qrk8e4m6gk9mmmy762qy693gg00j7ucxpnyhsagz3hf9tq4kjxvlq0qakku"
+#define LIANA2_RECEIVE0_WS                                                                                             \
+    "210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815958a81ac736476a9144b47031bbf50a9b3b7be4ecc548e0637" \
+    "eee2434888ad029000b268"
+#define LIANA2_RECEIVE0_SPK "00201d8f9aef48b177bd93da5009a2c5087be5ee60c1992f0ea051ba4ab056d2333e"
+#define LIANA2_CHANGE0_SPK "002035d90ba0985584144f259babfb3827ca33a034d874343c06b25bf395bfbbd2ec"
+#define LIANA3 "wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(16))))"
+#define LIANA3_SUM "7y2y6u58"
+#define LIANA3_RECEIVE0 "bc1qkqvtrgp69x8a7jj6zfcqqfjzvk3cyrdt8qstxghhyclfgzrknp5s7hstwc"
+
 static core_multisig_t ms;
 
 static int load(const char *text) {
     return core_multisig_load(text, strlen(text), &ms);
+}
+
+static unsigned int unhex(const char *h, uint8_t *out) {
+    unsigned int n = 0;
+    for (; h[0] && h[1]; h += 2) {
+        unsigned int v;
+        sscanf(h, "%2x", &v);
+        out[n++] = (uint8_t)v;
+    }
+    return n;
+}
+
+/* One Liana input of ours at <chain>/0, paying someone and sending change to our <change>/0 */
+static plan_t liana_plan(const char *ws, const char *spk, uint32_t chain, const char *change_spk, uint32_t change) {
+    plan_t p = {.magic = PLAN_MAGIC, .version = PLAN_VERSION, .tx_version = 2, .n_inputs = 1, .n_outputs = 2};
+    const plan_keypath_t key = {6, 0x73c5da0a, {48 | 0x80000000u, 0x80000000u, 0x80000000u, 2 | 0x80000000u, chain, 0}};
+    plan_input_t *in = &p.inputs[0];
+    memset(in->prev_txid, 0x11, 32);
+    in->amount = 100000, in->sequence = 0xfffffffd, in->key = key, in->sighash_type = 1;
+    in->spk.len = (uint8_t)unhex(spk, in->spk.bytes);
+    p.wscripts[0].len = (uint8_t)unhex(ws, p.wscripts[0].bytes);
+    p.outputs[0].amount = 60000;
+    p.outputs[0].spk.len = (uint8_t)unhex("0014751e76e8199196d454941c45d1b3a323f1433bd6", p.outputs[0].spk.bytes);
+    p.outputs[1].amount = 39000;
+    p.outputs[1].spk.len = (uint8_t)unhex(change_spk, p.outputs[1].spk.bytes);
+    p.outputs[1].key = key, p.outputs[1].key.path[4] = change;
+    return p;
+}
+
+static void liana(void) {
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_INPUTS];
+    unsigned int n_sigs;
+    plan_t p;
+    char canonical[CORE_MULTISIG_DESC_MAX];
+
+    CHECK(load(LIANA1) == CORE_OK && ms.kind == CORE_WALLET_LIANA && ms.n == 2 && ms.ours == 0 && ms.older == 52596,
+          "Liana: ours the primary key, recovery after 52596 blocks");
+    CHECK(!strcmp(ms.descriptor, LIANA1 "#" LIANA1_SUM), "Liana descriptor with Core's checksum: %s", ms.descriptor);
+    CHECK(!strcmp(ms.receive, LIANA1_RECEIVE0), "Liana's first receive address is Core's: %s", ms.receive);
+    strcpy(canonical, ms.descriptor);
+    CHECK(load(canonical) == CORE_OK && !strcmp(ms.descriptor, canonical), "its own Liana descriptor reads back");
+
+    p = liana_plan(LIANA1_RECEIVE0_WS, LIANA1_RECEIVE0_SPK, 0, LIANA1_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[0] == CORE_OUT_EXTERNAL &&
+              r.owner[1] == CORE_OUT_CHANGE && r.fee == 1000,
+          "a Liana input signed with the primary key, its change recognised");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 && sigs[0].pubkey[0] == 0x03 &&
+              !memcmp(sigs[0].pubkey + 1, p.wscripts[0].bytes + 2, 32),
+          "the signature is by the script's pk() key");
+    p.outputs[1].key.path[4] = 3;
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_EXTERNAL,
+          "change at a step Liana does not use");
+
+    CHECK(load(LIANA2) == CORE_OK && ms.ours == 1 && ms.older == 144 && !strcmp(ms.receive, LIANA2_RECEIVE0) &&
+              !strcmp(ms.descriptor, LIANA2 "#" LIANA2_SUM),
+          "Liana: ours the recovery key on <2;3>: %s", ms.receive);
+    p = liana_plan(LIANA2_RECEIVE0_WS, LIANA2_RECEIVE0_SPK, 2, LIANA2_CHANGE0_SPK, 3);
+    p.inputs[0].sequence = 144;
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE,
+          "a Liana input signed with the recovery key, change on 3");
+    p.inputs[0].key.path[4] = 0;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_NOT_OURS, "the recovery key at the primary's step");
+
+    CHECK(load(LIANA3) == CORE_OK && !strcmp(ms.receive, LIANA3_RECEIVE0) &&
+              !strcmp(ms.descriptor, LIANA3 "#" LIANA3_SUM),
+          "Liana with older(16), pushed as OP_16");
+    CHECK(core_multisig_cbor((uint8_t[1024]){0}, 1024) == -CORE_ERR_FORMAT, "no crypto-output for a Liana wallet");
+
+    core_multisig_unload();
+    p = liana_plan(LIANA1_RECEIVE0_WS, LIANA1_RECEIVE0_SPK, 0, LIANA1_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_EXTERNAL,
+          "without the wallet, signed but its change shown as external");
+    p.wscripts[0].bytes[63] ^= 1;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_NOT_OURS, "a timelock that does not hash to the input's script");
+    p.wscripts[0].bytes[0] = 0x20;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_SCRIPT, "a script that is neither multisig nor Liana's");
+
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(0))))") == CORE_ERR_FORMAT, "older(0)");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(65536))))") == CORE_ERR_FORMAT,
+          "older() beyond BIP68's 16 bits of blocks");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<1;1>/*),older(144))))") == CORE_ERR_FORMAT,
+          "receive and change on the same step");
+    CHECK(load("wsh(or_d(pk(" K3 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(144))))") == CORE_ERR_WALLET,
+          "a Liana wallet without our key");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K0 "/<2;3>/*),older(144))))") == CORE_ERR_FORMAT,
+          "our xpub as both keys");
+    CHECK(load("wsh(sortedmulti(2," K0 "/<2;3>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT,
+          "sortedmulti keeps receive 0, change 1");
 }
 
 int main(void) {
@@ -143,6 +255,7 @@ int main(void) {
               cbor[8] == 0x84,
           "crypto-account: our fingerprint and four outputs");
     CHECK(core_account_cbor(0, cbor, 100) == -CORE_ERR_FORMAT, "a buffer too small");
+    liana();
 
     core_unload();
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "unloading the seed unloads the wallet");

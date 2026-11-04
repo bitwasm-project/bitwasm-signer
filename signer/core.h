@@ -17,7 +17,7 @@ enum {
     CORE_ERR_NOT_OURS, /* an input claims our fingerprint, but its key does not produce its script */
     CORE_ERR_NOTHING_TO_SIGN,
     CORE_ERR_SIGHASH,        /* a sighash type we do not allow */
-    CORE_ERR_SCRIPT,         /* an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR or a P2WSH multisig */
+    CORE_ERR_SCRIPT,         /* an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, a P2WSH multisig or Liana's */
     CORE_ERR_PREVTX_MISSING, /* two or more inputs including SegWit v0, and no non_witness_utxo */
     CORE_ERR_PREVTX_MISMATCH,
     CORE_ERR_FEE,
@@ -120,14 +120,18 @@ int core_message_sign(uint8_t sig[65]);
 int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB_MAX], char desc[CORE_DESC_MAX]);
 
 /* Registers a P2WSH sortedmulti wallet of at most three keys from a descriptor, a BSMS 1.0 record or a Coldcard
- * setup file. From then on its inputs are signed only when their witness script is the wallet's, and its outputs
- * at our key's paths are shown as change. Unloading the seed unloads it too */
+ * setup file, or Liana's wsh(or_d(pk(primary),and_v(v:pkh(recovery),older(n)))) from its descriptor. From then on
+ * its inputs are signed only when their witness script is the wallet's, and its outputs at our key's paths are
+ * shown as change. Unloading the seed unloads it too */
 #define CORE_MULTISIG_DESC_MAX 640
+enum { CORE_WALLET_SORTEDMULTI = 0, CORE_WALLET_LIANA };
 typedef struct {
-    uint8_t threshold, n, ours; /* ours indexes fingerprints[] */
+    uint8_t threshold, n, ours; /* ours indexes fingerprints[]; for Liana 0 is the primary key, 1 the recovery */
+    uint8_t kind;               /* CORE_WALLET_* */
     uint32_t fingerprints[3];
     char receive[ADDRESS_MAX]; /* the first receive address, to compare with the coordinator's */
     char descriptor[CORE_MULTISIG_DESC_MAX];
+    uint16_t older; /* Liana: the blocks after which the recovery key can spend */
 } core_multisig_t;
 int core_multisig_load(const char *text, size_t len, core_multisig_t *out);
 /* Registers BCR-2020-010 crypto-output CBOR after converting its BIP48 multipath keys for the same checks */
