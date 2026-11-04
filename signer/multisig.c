@@ -117,17 +117,20 @@ static int desc_checksum(const char *s, size_t n, char out[9]) {
     return 1;
 }
 
-/* wsh(sortedmulti(k,KEY,...)) or Liana's wsh(or_d(pk(KEY),and_v(v:pkh(KEY),older(n)))) and, if there is
- * one, a checksum that has to hold. older() is in blocks, as BIP68 counts them in 16 bits */
+/* wsh(sortedmulti(k,KEY,...)) or wsh(or_d(pk(KEY),and_v(v:pkh(KEY),older(n)))) with v:pk and after() too, and if
+ * there is one, a checksum that has to hold */
 static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
     size_t start = c->i;
     uint32_t k;
     char sum[9];
     if (eat(c, "wsh(or_d(pk(")) {
-        if (!key_expr(c, testnet, &w->keys[0]) || !eat(c, "),and_v(v:pkh(") || !key_expr(c, testnet, &w->keys[1]) ||
-            !eat(c, "),older(") || !number(c, &k) || !eat(c, "))))") || k < 1 || k > 0xffff)
-            return 0;
-        w->kind = MS_LIANA, w->threshold = 1, w->n = 2, w->older = (uint16_t)k;
+        if (!key_expr(c, testnet, &w->keys[0]) || !eat(c, "),and_v(v:")) return 0;
+        w->kind = eat(c, "pk(") ? MS_OR_D | MS_OR_D_PK : eat(c, "pkh(") ? MS_OR_D : 0;
+        if (!w->kind || !key_expr(c, testnet, &w->keys[1]) || !eat(c, "),")) return 0;
+        if (eat(c, "after(")) w->kind |= MS_OR_D_AFTER;
+        else if (!eat(c, "older(")) return 0;
+        if (!number(c, &k) || !eat(c, "))))") || k < 1) return 0;
+        w->threshold = 1, w->n = 2, w->lock = k;
     } else {
         if (!eat(c, "wsh(sortedmulti(") || !number(c, &k)) return 0;
         for (w->n = 0; eat(c, ",");) {
@@ -228,7 +231,7 @@ int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char addres
     return ok;
 }
 
-size_t ms_older(uint32_t n, uint8_t out[4]) {
+size_t ms_scriptnum(uint32_t n, uint8_t out[5]) {
     size_t len = 1;
     if (n <= 16) return out[0] = (uint8_t)(0x50 + n), 1;
     for (uint32_t v = n; v; v >>= 8) out[len++] = (uint8_t)v;
@@ -237,17 +240,26 @@ size_t ms_older(uint32_t n, uint8_t out[4]) {
     return len;
 }
 
-/* <A> CHECKSIG IFDUP NOTIF DUP HASH160 <HASH160(B)> EQUALVERIFY CHECKSIGVERIFY <n> CSV ENDIF */
-static void liana_wscript(const uint8_t a[33], const uint8_t b[33], uint16_t older, plan_wscript_t *out) {
-    static const uint8_t mid[] = {0xac, 0x73, 0x64, 0x76, 0xa9, 0x14};
+/* <A> CHECKSIG IFDUP NOTIF, DUP HASH160 <HASH160(B)> EQUALVERIFY or <B>, CHECKSIGVERIFY <n> CSV or CLTV ENDIF */
+static void or_d_wscript(const ms_wallet_t *w, const uint8_t a[33], const uint8_t b[33], plan_wscript_t *out) {
+    static const uint8_t head[] = {0xac, 0x73, 0x64}, pkh[] = {0x76, 0xa9, 0x14};
     uint8_t *s = out->bytes;
+    size_t o = 37;
     s[0] = 33;
     memcpy(s + 1, a, 33);
-    memcpy(s + 34, mid, sizeof(mid));
-    hash160(b, 33, s + 40);
-    s[60] = 0x88, s[61] = 0xad;
-    out->len = (uint8_t)(62 + ms_older(older, s + 62));
-    s[out->len++] = 0xb2, s[out->len++] = 0x68;
+    memcpy(s + 34, head, sizeof(head));
+    if (w->kind & MS_OR_D_PK) {
+        s[o++] = 33;
+        memcpy(s + o, b, 33), o += 33;
+    } else {
+        memcpy(s + o, pkh, sizeof(pkh)), o += sizeof(pkh);
+        hash160(b, 33, s + o), o += 20;
+        s[o++] = 0x88;
+    }
+    s[o++] = 0xad;
+    o += ms_scriptnum(w->lock, s + o);
+    s[o++] = w->kind & MS_OR_D_AFTER ? 0xb1 : 0xb2, s[o++] = 0x68;
+    out->len = (uint8_t)o;
 }
 
 int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscript_t *out) {
@@ -262,7 +274,7 @@ int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscrip
             memcpy(t, keys[j], 33), memcpy(keys[j], keys[j - 1], 33), memcpy(keys[j - 1], t, 33);
         }
     }
-    if (w->kind == MS_LIANA) return liana_wscript(keys[0], keys[1], w->older, out), 1;
+    if (w->kind & MS_OR_D) return or_d_wscript(w, keys[0], keys[1], out), 1;
     out->bytes[out->len++] = (uint8_t)(0x50 + w->threshold);
     for (unsigned int i = 0; i < w->n; i++) {
         out->bytes[out->len++] = 33;
@@ -321,13 +333,13 @@ static size_t put_key(char *out, size_t o, const ms_key_t *k, int testnet) {
 size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]) {
     char num[11];
     size_t o;
-    if (w->kind == MS_LIANA) {
+    if (w->kind & MS_OR_D) {
         o = put(out, 0, "wsh(or_d(pk(");
         o = put_key(out, o, &w->keys[0], testnet);
-        o = put(out, o, "),and_v(v:pkh(");
+        o = put(out, o, w->kind & MS_OR_D_PK ? "),and_v(v:pk(" : "),and_v(v:pkh(");
         o = put_key(out, o, &w->keys[1], testnet);
-        o = put(out, o, "),older(");
-        decimal(w->older, num);
+        o = put(out, o, w->kind & MS_OR_D_AFTER ? "),after(" : "),older(");
+        decimal(w->lock, num);
         o = put(out, o, num);
         o = put(out, o, "))))");
     } else {

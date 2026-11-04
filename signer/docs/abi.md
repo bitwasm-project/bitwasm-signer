@@ -154,8 +154,10 @@ cannot tell the cosigners' keys from anyone else's. `signer_multisig_load` gives
 `signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` descriptor (with `/<0;1>/*`, `/**` or `/0/*` after
 each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
 `signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shape.
-`signer_multisig_load` also takes Liana's `wsh(or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),older(n))))`, with `n`
-from 1 to 65535 blocks and each key's `/<a;b>/*` as Liana numbers them (`<2;3>` for a key's second use). Without
+`signer_multisig_load` also takes Liana's `wsh(or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),older(n))))`, and the
+same with `v:pk(RECOVERY)` or `after(n)` as Nunchuk writes it, with `n` from 1 to 2^31 - 1 as miniscript takes
+it and each key's `/<a;b>/*` as Liana numbers them (`<2;3>` for a key's second use). The signer does not check
+the transaction's locktime or sequence against `n`: a signature made too early only fails to confirm. Without
 the wallet such an input is signed when its witness script is that shape, hashes to its script and holds our key
 as either one.
 Keys are xpub or tpub, or SLIP-132's Zpub or Vpub, and every origin step is hardened.
@@ -172,7 +174,7 @@ the wallet's keys there hash to it and one of its inputs is being signed. Loadin
 
 `signer_multisig_cbor()` and `signer_account_cbor()` describe public keys as BCR-2020-010 and -015 do, for
 `parser_ur_encode_cbor()`: the wallet as `wsh(sortedmulti())`, and the account's `sh(wpkh())`, `wpkh()`, `tr()`
-and BIP48 key as `wsh(cosigner())`, each key a crypto-hdkey with its origin and parent fingerprint. A Liana
+and BIP48 key as `wsh(cosigner())`, each key a crypto-hdkey with its origin and parent fingerprint. An `or_d`
 wallet has no crypto-output tag, so `signer_multisig_cbor()` returns `-FORMAT` for it.
 
 ## Signing a message
@@ -274,12 +276,12 @@ original PSBT and leaves every other byte alone.
 |---:|---:|---|
 | 0 | 1 | `threshold` |
 | 1 | 1 | `n`, how many keys |
-| 2 | 1 | `ours`, which of them; for Liana 0 is the primary key, 1 the recovery key |
-| 3 | 1 | `kind`: 0 `sortedmulti`, 1 Liana |
+| 2 | 1 | `ours`, which of them; for `or_d` 0 is the primary key, 1 the recovery key |
+| 3 | 1 | `kind`: 0 `sortedmulti`, or 1 `or_d` with 2 set for `v:pk(RECOVERY)` and 4 for `after()` |
 | 4 | 3 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
 | 16 | 75 | `receive`, the first receive address, NUL-terminated |
 | 91 | 640 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
-| 732 | 2 | `older`: for Liana, the blocks after which the recovery key can spend |
+| 732 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery key can spend |
 
 ## Signatures are deterministic
 

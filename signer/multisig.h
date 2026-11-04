@@ -22,12 +22,13 @@ typedef struct {
     uint8_t ser[78];   /* the xpub as serialized: chain code at 13, public key at 45 */
 } ms_key_t;
 
-/* SORTEDMULTI is wsh(sortedmulti(...)); LIANA is wsh(or_d(pk(keys[0]),and_v(v:pkh(keys[1]),older(older)))) */
-enum { MS_SORTEDMULTI = 0, MS_LIANA };
+/* OR_D is wsh(or_d(pk(keys[0]),and_v(v:pkh(keys[1]),older(lock)))) as Liana writes it. The flags swap in
+ * v:pk(keys[1]) and after(lock), as Nunchuk can write it */
+enum { MS_SORTEDMULTI = 0, MS_OR_D = 1, MS_OR_D_PK = 2, MS_OR_D_AFTER = 4 };
 
 typedef struct {
     uint8_t kind, threshold, n;
-    uint16_t older; /* LIANA: blocks before the recovery key can spend */
+    uint32_t lock; /* OR_D: the older() or after() value, 1 to 2^31 - 1 */
     ms_key_t keys[MS_MAX_KEYS];
 } ms_wallet_t;
 
@@ -37,8 +38,8 @@ int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char addres
 int ms_cbor_descriptor(const uint8_t *cbor, size_t len, int testnet, char out[MS_DESC_MAX]);
 /* The witness script at chain (0 receive, 1 change) and index, keys sorted as sortedmulti() sorts them */
 int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscript_t *out);
-/* older(n) as the script pushes it, a minimal script number: OP_1..OP_16, or 1 to 3 bytes. Returns its length */
-size_t ms_older(uint32_t n, uint8_t out[4]);
+/* n as the script pushes it, a minimal script number: OP_1..OP_16, or 1 to 4 bytes. Returns its length */
+size_t ms_scriptnum(uint32_t n, uint8_t out[5]);
 /* The wallet's descriptor with xpub / tpub, each key's <a;b> children and its checksum. Returns its length, or 0 */
 size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]);
 

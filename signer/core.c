@@ -38,7 +38,9 @@ static uint8_t host_nonce[PLAN_MAX_INPUTS][32], host_nonce_set[PLAN_MAX_INPUTS];
 static uint8_t nonce_points[PLAN_MAX_INPUTS][33]; /* Q for each signature core_sign() made, zero without a host nonce */
 
 enum { SPK_OTHER, SPK_P2WPKH, SPK_P2SH_P2WPKH, SPK_P2TR, SPK_P2WSH };
-_Static_assert(MS_LIANA == CORE_WALLET_LIANA && MS_SORTEDMULTI == CORE_WALLET_SORTEDMULTI, "wallet kinds");
+_Static_assert(MS_SORTEDMULTI == CORE_WALLET_SORTEDMULTI && MS_OR_D == CORE_WALLET_OR_D &&
+                   MS_OR_D_PK == CORE_WALLET_OR_D_PK && MS_OR_D_AFTER == CORE_WALLET_OR_D_AFTER,
+               "wallet kinds");
 
 static int spk_type(const plan_script_t *s) {
     if (s->len == 22 && s->bytes[0] == 0x00 && s->bytes[1] == 20) return SPK_P2WPKH;
@@ -62,27 +64,32 @@ static unsigned int multisig_keys(const plan_wscript_t *w) {
     return n;
 }
 
-/* Liana's or_d(pk(A),and_v(v:pkh(B),older(n))) as ms_wscript() writes it, n from 1 to 0xffff. On a match a
- * points at A and h at HASH160(B) */
-static int liana_keys(const plan_wscript_t *w, const uint8_t **a, const uint8_t **h) {
-    static const uint8_t mid[] = {0xac, 0x73, 0x64, 0x76, 0xa9, 0x14};
-    const uint8_t *b = w->bytes;
-    uint8_t want[4];
+/* or_d(pk(A),and_v(v:pkh(B),older(n))), v:pk(B) and after(n) too, exactly as ms_wscript() writes them. On a match a
+ * points at A, b at B or HASH160(B) and blen is 33 or 20 */
+static int or_d_keys(const plan_wscript_t *w, const uint8_t **a, const uint8_t **b, size_t *blen) {
+    const uint8_t *s = w->bytes;
+    uint8_t want[5];
     uint32_t n = 0;
-    unsigned int len = w->len < 65 ? 0 : w->len - 64u; /* the timelock's bytes */
-    if (len < 1 || len > 4 || b[0] != 33 || (b[1] != 2 && b[1] != 3) || memcmp(b + 34, mid, sizeof(mid)) ||
-        b[60] != 0x88 || b[61] != 0xad || b[w->len - 2] != 0xb2 || b[w->len - 1] != 0x68)
+    size_t o, len;
+    if (w->len < 40 || s[0] != 33 || (s[1] != 2 && s[1] != 3) || s[34] != 0xac || s[35] != 0x73 || s[36] != 0x64)
         return 0;
-    if (len == 1) n = b[62] - 0x50u;
-    for (unsigned int i = len; i > 1; i--) n = n << 8 | b[62 + i - 1];
-    if (n < 1 || n > 0xffff || ms_older(n, want) != len || memcmp(want, b + 62, len)) return 0;
-    *a = b + 1, *h = b + 40;
+    if (s[37] == 33 && (s[38] == 2 || s[38] == 3)) *b = s + 38, *blen = 33, o = 71;
+    else if (s[37] == 0x76 && s[38] == 0xa9 && s[39] == 0x14) *b = s + 40, *blen = 20, o = 61;
+    else return 0;
+    if (w->len < o + 4 || (*blen == 20 && s[60] != 0x88) || s[o++] != 0xad) return 0;
+    len = w->len - o - 2; /* the timelock's push */
+    if (len > 5 || (s[w->len - 2] != 0xb1 && s[w->len - 2] != 0xb2) || s[w->len - 1] != 0x68) return 0;
+    if (len == 1) n = s[o] - 0x50u;
+    for (size_t i = len; i > 1; i--) n = n << 8 | s[o + i - 1];
+    if (n < 1 || n >= 0x80000000u || ms_scriptnum(n, want) != len || memcmp(want, s + o, len)) return 0;
+    *a = s + 1;
     return 1;
 }
 
 static int wscript_known(const plan_wscript_t *w) {
-    const uint8_t *a, *h;
-    return multisig_keys(w) || liana_keys(w, &a, &h);
+    const uint8_t *a, *b;
+    size_t blen;
+    return multisig_keys(w) || or_d_keys(w, &a, &b, &blen);
 }
 
 /* BIP86 tweak, no script tree: moves the secret key to the output key and returns the x-only form */
@@ -122,13 +129,14 @@ static int owns(const plan_keypath_t *key, const plan_script_t *spk, const plan_
         ok = !memcmp(xonly, spk->bytes + 2, 32);
     } else if (type == SPK_P2WSH && ws && bip32_pubkey(ctx, node->key, pub)) {
         unsigned int n = multisig_keys(ws), found = 0;
-        const uint8_t *a, *h;
+        const uint8_t *a, *b;
+        size_t blen;
         sha256(ws->bytes, ws->len, mine);
         if (!memcmp(mine, spk->bytes + 2, 32) && n) {
             for (unsigned int i = 0; i < n; i++) found |= !memcmp(ws->bytes + 2 + 34 * i, pub, 33);
-        } else if (!memcmp(mine, spk->bytes + 2, 32) && liana_keys(ws, &a, &h)) {
-            hash160(pub, 33, mine);
-            found = !memcmp(a, pub, 33) || !memcmp(h, mine, 20);
+        } else if (!memcmp(mine, spk->bytes + 2, 32) && or_d_keys(ws, &a, &b, &blen)) {
+            if (blen == 20) hash160(pub, 33, mine);
+            found = !memcmp(a, pub, 33) || !memcmp(b, blen == 20 ? mine : pub, blen);
         }
         ok = (int)found;
     }
@@ -823,7 +831,7 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
     if (stated[0] && strcmp(stated, out->receive)) goto done; /* the coordinator derived some other wallet */
     if (!ms_descriptor(&wallet, network == CORE_TESTNET, out->descriptor)) goto done;
     out->threshold = wallet.threshold, out->n = wallet.n, out->ours = (uint8_t)ours;
-    out->kind = wallet.kind, out->older = wallet.older;
+    out->kind = wallet.kind, out->lock = wallet.lock;
     for (unsigned int i = 0; i < wallet.n; i++) out->fingerprints[i] = wallet.keys[i].fingerprint;
     wallet_ours = ours;
     rc = CORE_OK;

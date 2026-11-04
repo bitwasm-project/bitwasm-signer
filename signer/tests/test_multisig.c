@@ -59,6 +59,32 @@ static int checks, failures;
 #define LIANA3_SUM "7y2y6u58"
 #define LIANA3_RECEIVE0 "bc1qkqvtrgp69x8a7jj6zfcqqfjzvk3cyrdt8qstxghhyclfgzrknp5s7hstwc"
 
+/* The same or_d with v:pk and after(), as Nunchuk writes them: ours primary with a time-based older; ours the
+ * recovery key at a block height; v:pkh with a time after() pushed in 4 bytes; and older() at its largest */
+#define PK1 "wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pk(" K1 "/<0;1>/*),older(4194432))))"
+#define PK1_SUM "6ks84eyt"
+#define PK1_RECEIVE0_WS                                                                                                \
+    "2103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0ac7364210254689c4a585b8f3d9ddea8e9e68d0e8f49" \
+    "f7"                                                                                                               \
+    "5709fa6e7d075657573815958a81ad03800040b268"
+#define PK1_RECEIVE0_SPK "0020054a0d3cafcc7da91625e3ac21f5bb61d2f8b52e173ee365d1c5f7dec15b93a4"
+#define PK1_CHANGE0_SPK "00208163ae5e4ebb025765c86d4316a64ff927f58dd131f6013336356966dee3dfe7"
+#define PK2 "wsh(or_d(pk(" K1 "/<0;1>/*),and_v(v:pk(" K0 "/<2;3>/*),after(1000000))))"
+#define PK2_SUM "4um5yfag"
+#define PK2_RECEIVE0 "bc1qs3v3chanyx004vefg2x2anm5vll4kpd5pxasknw0sdhtppk27vyqfglwka"
+#define PK2_RECEIVE0_WS                                                                                                \
+    "210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815958a81ac73642103e762c58a58500170daf6a9c73908744504" \
+    "5c"                                                                                                               \
+    "25b01eb1960e7f7ec3b770d5125cad0340420fb168"
+#define PK2_RECEIVE0_SPK "002084591c5fb3219efab329428caecf7467ff5b05b409bb0b4dcf836eb086caf308"
+#define PK2_CHANGE0_SPK "002088c2442495ef57646d6b71542f3c16802c2eb5aa517a59736f1ab35410204d4b"
+#define AFTER3 "wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),after(1700000000))))"
+#define AFTER3_SUM "jq6a3ntc"
+#define AFTER3_RECEIVE0 "bc1qruqcyg9n7gjlghdyuzmv30we59jx67f390ax0kghg762nfa30hrq9kzyw7"
+#define OLDER4 "wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(2147483647))))"
+#define OLDER4_SUM "u74pe25a"
+#define OLDER4_RECEIVE0 "bc1qkkka9qvtlfs24f9akyzasp76r4cc3jkpxahulsm6xr9wkf6k9zysg99nxx"
+
 static core_multisig_t ms;
 
 static int load(const char *text) {
@@ -99,7 +125,7 @@ static void liana(void) {
     plan_t p;
     char canonical[CORE_MULTISIG_DESC_MAX];
 
-    CHECK(load(LIANA1) == CORE_OK && ms.kind == CORE_WALLET_LIANA && ms.n == 2 && ms.ours == 0 && ms.older == 52596,
+    CHECK(load(LIANA1) == CORE_OK && ms.kind == CORE_WALLET_OR_D && ms.n == 2 && ms.ours == 0 && ms.lock == 52596,
           "Liana: ours the primary key, recovery after 52596 blocks");
     CHECK(!strcmp(ms.descriptor, LIANA1 "#" LIANA1_SUM), "Liana descriptor with Core's checksum: %s", ms.descriptor);
     CHECK(!strcmp(ms.receive, LIANA1_RECEIVE0), "Liana's first receive address is Core's: %s", ms.receive);
@@ -117,7 +143,7 @@ static void liana(void) {
     CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_EXTERNAL,
           "change at a step Liana does not use");
 
-    CHECK(load(LIANA2) == CORE_OK && ms.ours == 1 && ms.older == 144 && !strcmp(ms.receive, LIANA2_RECEIVE0) &&
+    CHECK(load(LIANA2) == CORE_OK && ms.ours == 1 && ms.lock == 144 && !strcmp(ms.receive, LIANA2_RECEIVE0) &&
               !strcmp(ms.descriptor, LIANA2 "#" LIANA2_SUM),
           "Liana: ours the recovery key on <2;3>: %s", ms.receive);
     p = liana_plan(LIANA2_RECEIVE0_WS, LIANA2_RECEIVE0_SPK, 2, LIANA2_CHANGE0_SPK, 3);
@@ -142,8 +168,11 @@ static void liana(void) {
     CHECK(core_review(&p, NULL, &r) == CORE_ERR_SCRIPT, "a script that is neither multisig nor Liana's");
 
     CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(0))))") == CORE_ERR_FORMAT, "older(0)");
-    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(65536))))") == CORE_ERR_FORMAT,
-          "older() beyond BIP68's 16 bits of blocks");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(2147483648))))") == CORE_ERR_FORMAT,
+          "older() at 2^31, beyond what miniscript takes");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pk(" K1 "/<0;1>/*),after(0))))") == CORE_ERR_FORMAT, "after(0)");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkhh(" K1 "/<0;1>/*),older(144))))") == CORE_ERR_FORMAT,
+          "neither v:pk nor v:pkh");
     CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<1;1>/*),older(144))))") == CORE_ERR_FORMAT,
           "receive and change on the same step");
     CHECK(load("wsh(or_d(pk(" K3 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(144))))") == CORE_ERR_WALLET,
@@ -152,6 +181,49 @@ static void liana(void) {
           "our xpub as both keys");
     CHECK(load("wsh(sortedmulti(2," K0 "/<2;3>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT,
           "sortedmulti keeps receive 0, change 1");
+}
+
+static void or_d_variants(void) {
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_INPUTS];
+    unsigned int n_sigs;
+    plan_t p;
+
+    CHECK(load(PK1) == CORE_OK && ms.kind == (CORE_WALLET_OR_D | CORE_WALLET_OR_D_PK) && ms.ours == 0 &&
+              ms.lock == 4194432 && !strcmp(ms.descriptor, PK1 "#" PK1_SUM),
+          "v:pk with a time-based older(): %s", ms.descriptor);
+    p = liana_plan(PK1_RECEIVE0_WS, PK1_RECEIVE0_SPK, 0, PK1_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE,
+          "a v:pk input signed with the primary key, its change recognised");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 1, 33),
+          "the signature is by the pk() key");
+
+    CHECK(load(PK2) == CORE_OK && ms.kind == (CORE_WALLET_OR_D | CORE_WALLET_OR_D_PK | CORE_WALLET_OR_D_AFTER) &&
+              ms.ours == 1 && ms.lock == 1000000 && !strcmp(ms.receive, PK2_RECEIVE0) &&
+              !strcmp(ms.descriptor, PK2 "#" PK2_SUM),
+          "v:pk with after() at a height, ours the recovery key: %s", ms.receive);
+    p = liana_plan(PK2_RECEIVE0_WS, PK2_RECEIVE0_SPK, 2, PK2_CHANGE0_SPK, 3);
+    p.locktime = 1000000;
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE,
+          "a v:pk input signed with the recovery key, change on 3");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 38, 33),
+          "the signature is by the v:pk() key");
+    p.wscripts[0].bytes[p.wscripts[0].len - 2] = 0xb2;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_NOT_OURS, "CSV in place of CLTV does not hash to the input's script");
+
+    CHECK(load(AFTER3) == CORE_OK && ms.kind == (CORE_WALLET_OR_D | CORE_WALLET_OR_D_AFTER) &&
+              !strcmp(ms.receive, AFTER3_RECEIVE0) && !strcmp(ms.descriptor, AFTER3 "#" AFTER3_SUM),
+          "v:pkh with a time after(), pushed in 4 bytes");
+    CHECK(load(OLDER4) == CORE_OK && !strcmp(ms.receive, OLDER4_RECEIVE0) &&
+              !strcmp(ms.descriptor, OLDER4 "#" OLDER4_SUM),
+          "older(2^31 - 1)");
+
+    core_multisig_unload();
+    p = liana_plan(PK1_RECEIVE0_WS, PK1_RECEIVE0_SPK, 0, PK1_CHANGE0_SPK, 1);
+    p.wscripts[0].bytes[p.wscripts[0].len - 3] = 0x00;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_SCRIPT, "a timelock pushed with a needless zero byte");
 }
 
 int main(void) {
@@ -256,6 +328,7 @@ int main(void) {
           "crypto-account: our fingerprint and four outputs");
     CHECK(core_account_cbor(0, cbor, 100) == -CORE_ERR_FORMAT, "a buffer too small");
     liana();
+    or_d_variants();
 
     core_unload();
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "unloading the seed unloads the wallet");
