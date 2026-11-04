@@ -213,7 +213,7 @@ check-hosts-agree: build/signer.wasm build/parser.wasm
 	  diff build/host-js.out build/host-kotlin.out && echo "JavaScript and Kotlin agree"; \
 	elif [ "$(REQUIRE_KOTLIN)" = "1" ]; then echo "kotlinc not found and REQUIRE_KOTLIN=1"; exit 1; \
 	else echo "kotlinc not found; skipping the Kotlin host"; fi; \
-	if command -v swift >/dev/null && swift --version | grep -Eq 'version (6\.(3|[4-9]|[1-9][0-9]+)|([7-9]|[1-9][0-9]+))\.'; then \
+	if command -v swift >/dev/null && swift --version | grep -Eq 'version (6\.(3|[4-9]|[1-9][0-9]+)|([7-9]|[1-9][0-9]+))[. ]'; then \
 	  $(MAKE) -s -C signer/hosts/swift dump PSBT=$(PWD)/$(PSBT_VECTOR) 2>/dev/null \
 	    | grep -vE '^Building|^Build complete|^\[' > build/host-swift.out; \
 	  diff build/host-js.out build/host-swift.out && echo "JavaScript and Swift agree"; \
