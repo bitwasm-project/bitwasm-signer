@@ -54,7 +54,7 @@ def main():
         "multisig.descriptor": truth["core_multisig_t"]["descriptor"],
         "multisig.descriptorCap": truth["core_multisig_t"]["descriptor_cap"],
         "multisig.kind": truth["core_multisig_t"]["kind"],
-        "multisig.older": truth["core_multisig_t"]["older"],
+        "multisig.lock": truth["core_multisig_t"]["lock"],
     }
     for name, want in want_js.items():
         key = name.split(".")[1]

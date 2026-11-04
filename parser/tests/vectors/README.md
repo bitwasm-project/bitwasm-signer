@@ -30,6 +30,8 @@ The seed is BIP39's published all-zero test vector (`abandon` x11 + `about`), fi
 | `own_with_p2wsh_2of4_input` | one P2WPKH input ours, beside a P2WSH 2-of-4: too many keys for the plan |
 | `own_liana_primary_1in` | one Liana input, ours the primary key, recovery after 52596 blocks; paying out plus change |
 | `own_liana_recovery_1in` | the same with ours the recovery key on chains 2 and 3, spent once `older(144)` holds |
+| `own_or_d_pk_primary_1in` | the same shape with `v:pk` for the recovery key, as Nunchuk writes it, and a time-based `older(4194432)`; ours the primary key |
+| `own_or_d_pk_after_recovery_1in` | `v:pk` with `after(1000000)`, ours the recovery key, the locktime at 1000000 |
 
 ## Regenerating them
 

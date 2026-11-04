@@ -102,11 +102,12 @@ for (const [chain, internal] of [[0, false], [1, true]]) {
   const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
   imports.push({ desc: `${desc}#${ck}`, timestamp: "now", active: true, internal, range: [0, 20] });
 }
-// Liana, as parser/tools/gen_vectors.py builds it: ours the primary key, or the recovery key on chains 2 and 3
+// or_d, as parser/tools/gen_vectors.py builds it: ours the primary key, or the recovery key on chains 2 and 3
 const ours = `[${FINGERPRINT}/48h/0h/0h/2h]${MULTISIG.tprv}`, cosigner = MULTISIG.cosigners[0];
-for (const chain of [0, 1, 2, 3]) {
-  const desc = chain < 2 ? `wsh(or_d(pk(${ours}/${chain}/*),and_v(v:pkh(${cosigner}/${chain}/*),older(52596))))`
-                         : `wsh(or_d(pk(${cosigner}/${chain - 2}/*),and_v(v:pkh(${ours}/${chain}/*),older(144))))`;
+for (const [chain, recovery, lock] of [0, 1, 2, 3].flatMap((c) =>
+  c < 2 ? [[c, "pkh", "older(52596)"], [c, "pk", "older(4194432)"]] : [[c, "pkh", "older(144)"], [c, "pk", "after(1000000)"]])) {
+  const desc = chain < 2 ? `wsh(or_d(pk(${ours}/${chain}/*),and_v(v:${recovery}(${cosigner}/${chain}/*),${lock})))`
+                         : `wsh(or_d(pk(${cosigner}/${chain - 2}/*),and_v(v:${recovery}(${ours}/${chain}/*),${lock})))`;
   const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
   imports.push({ desc: `${desc}#${ck}`, timestamp: "now", range: [0, 20] });
 }
