@@ -13,7 +13,7 @@ import WasmKit
 // What the host decodes. signer/tests/layout.c prints these from the structs themselves
 // and `make check-layout` fails if this table drifts from them.
 private enum L {
-    static let planSize = 6712, planNInputs = 16, planNOutputs = 17
+    static let planSize = 8536, planNInputs = 16, planNOutputs = 17
 
     static let rvSize = 64
     static let rvTotalIn = 0, rvTotalOut = 8, rvFee = 16
@@ -31,9 +31,9 @@ private enum L {
     static let msgSize = 1101
     static let msgAddress = 0, msgTextKind = 75, msgText = 76, msgTextCap = 1025
 
-    static let msSize = 736
+    static let msSize = 1136
     static let msThreshold = 0, msN = 1, msOurs = 2, msFingerprints = 4
-    static let msReceive = 16, msReceiveCap = 75, msDescriptor = 91, msDescriptorCap = 640
+    static let msReceive = 28, msReceiveCap = 75, msDescriptor = 103, msDescriptorCap = 1024
 
     static let maxInputs = 16, maxOutputs = 16
     static let xpubMax = 120, descMax = 180, prevtxMax = 32768

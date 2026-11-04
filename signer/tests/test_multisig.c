@@ -85,6 +85,38 @@ static int checks, failures;
 #define OLDER4_SUM "u74pe25a"
 #define OLDER4_RECEIVE0 "bc1qkkka9qvtlfs24f9akyzasp76r4cc3jkpxahulsm6xr9wkf6k9zysg99nxx"
 
+/* With multi(): Keeper's Emergency Key, ours in the 2-of-3; and two 2-of-3s at the plan's 219 bytes, ours on the
+ * recovery path beside two keys of account 1 */
+#define K1A                                                                                                            \
+    "[3f635a63/48h/0h/1h/"                                                                                             \
+    "2h]"                                                                                                              \
+    "xpub6EM8uMGUZMyVPM95MyiJKaQF476QWxmZZExfShr3eARKprqgqvS9m4ozAPZe4SBAbuBiRxy3QAuYcduqybq2vgXDVpvaioHDVaHbZTxnDMT"
+#define K2A                                                                                                            \
+    "[b8688df1/48h/0h/1h/"                                                                                             \
+    "2h]"                                                                                                              \
+    "xpub6EAMBJLn1jiquajTsNRkZXU1oKnA4WJMNvcz4FRR4QmFKdfHxJVvfRLoysWfcc16AMTR4CoMD8UNjvs9JtbsLeuLwpTczgq8zuuERnp8YZF"
+#define EK "wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*),and_v(v:pkh(" K3 "/<0;1>/*),after(900000))))"
+#define EK_SUM "n62ygf4f"
+#define EK_RECEIVE0 "bc1qfyy5qqadpynnnkr9qv0w2mdaq5ksvplv87mds7y7msyvxfvwx4gsqdg548"
+#define EK_RECEIVE0_WS                                                                                                 \
+    "522103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0210254689c4a585b8f3d9ddea8e9e68d0e8f49f7"   \
+    "5709fa6e7d075657573815958a8121028e818df63d6f2dce9308d7455fd4c85cbb39d703608b8fbed647d75e262322d853ae736476a914"   \
+    "cac00799cd0755d9d2d68455eb8f984a64184e6788ad03a0bb0db168"
+#define EK_RECEIVE0_SPK "002049094003ad092739d865031ee56dbd052d0607ec3fb6d8789edc08c3258e3551"
+#define EK_CHANGE0_SPK "002021bc2d18717e4dd71ed7b8c3021949d7d7be93218cd18ae9ac931d3bb6a5f110"
+#define MX                                                                                                             \
+    "wsh(or_d(multi(2," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*),and_v(v:multi(2," K0 "/<2;3>/*," K1A               \
+    "/<0;1>/*," K2A "/<0;1>/*),after(1700000000))))"
+#define MX_SUM "4jxfv582"
+#define MX_RECEIVE0 "bc1qjp5pmxw4qvf888qdf8lcda7jgcaffc82nl4035shnq6z6rmxnlmskahf27"
+#define MX_RECEIVE0_WS                                                                                                 \
+    "52210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815958a8121028e818df63d6f2dce9308d7455fd4c85cbb39"   \
+    "d703608b8fbed647d75e262322d82103229cb34fe3eb1af43b6dd2a2e1b31681039b71d9303ded36b3128ef359e379bd53ae7364522103"   \
+    "e762c58a58500170daf6a9c739087445045c25b01eb1960e7f7ec3b770d5125c21027fea83cba9510d4c21bf9fa7fca1d10f9e116a9236"   \
+    "53830d9c1dec41b70ea30c2102a6dd7f84904c4dd24d242cd35053595f911d48fd4f07cfc78420895e12704c8953af0400f15365b168"
+#define MX_RECEIVE0_SPK "002090681d99d50312739c0d49ff86f7d2463a94e0ea9feaf8d21798342d0f669ff7"
+#define MX_CHANGE0_SPK "0020a8b5bc019053b5847fad2131790ee63526aed1727d8881d654e02cebe2ec0dd3"
+
 static core_multisig_t ms;
 
 static int load(const char *text) {
@@ -226,6 +258,63 @@ static void or_d_variants(void) {
     CHECK(core_review(&p, NULL, &r) == CORE_ERR_SCRIPT, "a timelock pushed with a needless zero byte");
 }
 
+static void or_d_multi(void) {
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_INPUTS];
+    unsigned int n_sigs;
+    plan_t p;
+
+    CHECK(load(EK) == CORE_OK && ms.kind == (CORE_WALLET_OR_D | CORE_WALLET_OR_D_AFTER) && ms.n == 4 &&
+              ms.primary == 3 && ms.threshold == 2 && ms.threshold2 == 1 && ms.ours == 0 && ms.lock == 900000 &&
+              ms.fingerprints[3] == 0x28645006 && !strcmp(ms.receive, EK_RECEIVE0) &&
+              !strcmp(ms.descriptor, EK "#" EK_SUM),
+          "Keeper's Emergency Key, ours in the 2-of-3: %s", ms.descriptor);
+    p = liana_plan(EK_RECEIVE0_WS, EK_RECEIVE0_SPK, 0, EK_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE,
+          "an input of it signed, its change recognised");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 2, 33),
+          "the signature is by our key in the multi()");
+
+    CHECK(load(MX) == CORE_OK && ms.n == 6 && ms.primary == 3 && ms.threshold2 == 2 && ms.ours == 3 &&
+              !strcmp(ms.receive, MX_RECEIVE0) && !strcmp(ms.descriptor, MX "#" MX_SUM),
+          "two 2-of-3s, ours on the recovery path: %s", ms.receive);
+    p = liana_plan(MX_RECEIVE0_WS, MX_RECEIVE0_SPK, 2, MX_CHANGE0_SPK, 3);
+    p.locktime = 1700000000;
+    CHECK(p.wscripts[0].len == PLAN_MAX_WSCRIPT && core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 &&
+              r.owner[1] == CORE_OUT_CHANGE,
+          "a 219-byte witness script signed on the recovery path");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 109, 33),
+          "the signature is by our key in the v:multi()");
+
+    core_multisig_unload();
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1, "without the wallet, the same input is signed");
+    p.wscripts[0].bytes[107 + 1 + 3 * 34 + 1] = 0xae; /* after the primary's 105 bytes, IFDUP NOTIF */
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_SCRIPT, "CHECKMULTISIG for the recovery path's VERIFY");
+    p = liana_plan(MX_RECEIVE0_WS, MX_RECEIVE0_SPK, 2, MX_CHANGE0_SPK, 3);
+    p.wscripts[0].bytes[0] = 0x54;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_SCRIPT, "a threshold above the side's key count");
+
+    CHECK(load("wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*),and_v(v:pkh(" K1A
+               "/<0;1>/*),after(900000))))") == CORE_ERR_FORMAT,
+          "four keys on one side");
+    CHECK(load("wsh(or_d(multi(1," K0 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(144))))") == CORE_ERR_FORMAT,
+          "multi() of one key, which pk() writes");
+    CHECK(load("wsh(or_d(multi(3," K0 "/<0;1>/*," K1 "/<0;1>/*),and_v(v:pkh(" K2 "/<0;1>/*),older(144))))") ==
+              CORE_ERR_FORMAT,
+          "a threshold above the side's key count");
+    CHECK(load("wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*),and_v(v:multi(2," K0 "/<2;3>/*," K2
+               "/<0;1>/*),older(144))))") == CORE_ERR_FORMAT,
+          "our xpub on both paths, which needs two keys of ours in one input");
+    CHECK(load("wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*),and_v(v:pkh(" K3 "/<0;1>/*),older(144))))") ==
+                  CORE_OK &&
+              ms.n == 3 && ms.primary == 2,
+          "a 2-of-2 with one recovery key");
+    CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*))") == CORE_ERR_FORMAT,
+          "sortedmulti stays at three keys");
+}
+
 int main(void) {
     uint8_t seed[64], cbor[1024], mainnet_cbor[1024];
     static const char mn[] =
@@ -329,6 +418,7 @@ int main(void) {
     CHECK(core_account_cbor(0, cbor, 100) == -CORE_ERR_FORMAT, "a buffer too small");
     liana();
     or_d_variants();
+    or_d_multi();
 
     core_unload();
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "unloading the seed unloads the wallet");

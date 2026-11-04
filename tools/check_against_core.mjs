@@ -102,14 +102,27 @@ for (const [chain, internal] of [[0, false], [1, true]]) {
   const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
   imports.push({ desc: `${desc}#${ck}`, timestamp: "now", active: true, internal, range: [0, 20] });
 }
-// or_d, as parser/tools/gen_vectors.py builds it: ours the primary key, or the recovery key on chains 2 and 3
-const ours = `[${FINGERPRINT}/48h/0h/0h/2h]${MULTISIG.tprv}`, cosigner = MULTISIG.cosigners[0];
-for (const [chain, recovery, lock] of [0, 1, 2, 3].flatMap((c) =>
-  c < 2 ? [[c, "pkh", "older(52596)"], [c, "pk", "older(4194432)"]] : [[c, "pkh", "older(144)"], [c, "pk", "after(1000000)"]])) {
-  const desc = chain < 2 ? `wsh(or_d(pk(${ours}/${chain}/*),and_v(v:${recovery}(${cosigner}/${chain}/*),${lock})))`
-                         : `wsh(or_d(pk(${cosigner}/${chain - 2}/*),and_v(v:${recovery}(${ours}/${chain}/*),${lock})))`;
-  const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
-  imports.push({ desc: `${desc}#${ck}`, timestamp: "now", range: [0, 20] });
+// or_d, as parser/tools/gen_vectors.py builds it: {0} ours, on chains 2 and 3 when it is on the recovery path, and
+// the cosigners at 0 and 1: the two above, "letter advice ... above", then the first two at account 1
+const ours = `[${FINGERPRINT}/48h/0h/0h/2h]${MULTISIG.tprv}`;
+const OR_D_COSIGNERS = [...MULTISIG.cosigners,
+  "[28645006/48h/0h/0h/2h]tpubDE9rhca81b8zga4T9czxb4wjy1ZjbXtPnto2orq74XiVkLAtDDDTQrFppdVcVk7WHz8PmTsdLAjEeQTLsBBLWscv1cdYHCtXUe3FjRgWdjS",
+  "[3f635a63/48h/0h/1h/2h]tpubDEimRb6AGdvwf9KvpAhPXVjcPEC4WMGd6sYxoFuBz5BDa9WPv9HEuWUpQReRaw8QPoid3YUuwGjbJpQTNTgGp7yWZRftQKwT5Xt1KUg3WW3",
+  "[b8688df1/48h/0h/1h/2h]tpubDEXyhYATj1gJBNvKKZQqmSoP8Ssp3toQvZDHQoUZQKX94vL12XM1os1eDubT96xKxFzKfnKDkEJRS7MkhkT7E6Me1RCvgDVNasVeBk5pH3q"];
+for (const [policy, recovery] of [
+  ["or_d(pk({0}),and_v(v:pkh({1}),older(52596)))", false],
+  ["or_d(pk({1}),and_v(v:pkh({0}),older(144)))", true],
+  ["or_d(pk({0}),and_v(v:pk({1}),older(4194432)))", false],
+  ["or_d(pk({1}),and_v(v:pk({0}),after(1000000)))", true],
+  ["or_d(multi(2,{0},{1},{2}),and_v(v:pkh({3}),after(900000)))", false],
+  ["or_d(multi(2,{1},{2},{3}),and_v(v:multi(2,{0},{4},{5}),after(1700000000)))", true],
+]) {
+  for (const step of [0, 1]) {
+    const keys = [`${ours}/${step + (recovery ? 2 : 0)}/*`, ...OR_D_COSIGNERS.map((k) => `${k}/${step}/*`)];
+    const desc = `wsh(${policy.replace(/\{(\d)\}/g, (_, i) => keys[i])})`;
+    const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
+    imports.push({ desc: `${desc}#${ck}`, timestamp: "now", range: [0, 20] });
+  }
 }
 const res = JSON.parse(wallet("importdescriptors", JSON.stringify(imports)));
 if (!res.every((r) => r.success)) {

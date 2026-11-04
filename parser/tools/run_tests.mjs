@@ -24,7 +24,7 @@ const UR_ERR_MISMATCH = -4, UR_ERR_TYPE = -7;
 // The defect in invalid_with_msg[15] is the value length of PSBT_IN_MUSIG2_PARTIAL_SIG (0x1c);
 // its message omits musig2
 const MUSIG2_BY_FIELD = new Set([15]);
-const PLAN_SIZE = 6712, WSCRIPTS = 5016, WSCRIPT_SIZE = 106;
+const PLAN_SIZE = 8536, WSCRIPTS = 5016, WSCRIPT_SIZE = 220;
 
 const moduleBytes = readFileSync(WASM);
 const runtime = process.env.PARSER_RUNTIME ?? "v8";

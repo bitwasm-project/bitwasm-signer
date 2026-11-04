@@ -6,13 +6,14 @@
 //! from the documentation, and nothing here may move without that documentation changing.
 
 pub const MAGIC: u32 = 0x4e4c_5042; // "BPLN"
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 pub const MAX_INPUTS: usize = 16;
 pub const MAX_OUTPUTS: usize = 16;
 pub const MAX_SPK: usize = 83; // the standard OP_RETURN limit; P2TR and P2WSH need 34
 pub const MAX_DEPTH: usize = 8;
-// sortedmulti of at most three keys: OP_m, 3 x (push + 33), OP_n, OP_CHECKMULTISIG
-pub const MAX_WSCRIPT: usize = 105;
+// or_d of two three-key multis: 2 x (OP_m, 3 x (push + 33), OP_n, CHECKMULTISIG), IFDUP NOTIF, a 5-byte
+// timelock, CSV ENDIF
+pub const MAX_WSCRIPT: usize = 219;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -163,4 +164,4 @@ const _: () = assert!(core::mem::size_of::<Input>() == 176);
 const _: () = assert!(core::mem::size_of::<Output>() == 136);
 const _: () = assert!(core::mem::offset_of!(Plan, inputs) == 24);
 const _: () = assert!(core::mem::offset_of!(Plan, wscripts) == 5016);
-const _: () = assert!(core::mem::size_of::<Plan>() == 6712);
+const _: () = assert!(core::mem::size_of::<Plan>() == 8536);

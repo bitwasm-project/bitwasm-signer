@@ -249,7 +249,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   const W = await Signer.load(signerWasm, pin);
   W.init().seedFromMnemonic(new TextEncoder().encode(MNEMONIC));
   const FP = parseInt("73c5da0a", 16);
-  const IN = (i) => 24 + 176 * i, WS = (i) => 5016 + 106 * i;
+  const IN = (i) => 24 + 176 * i, WS = (i) => 5016 + 220 * i;
   const sha = (b) => createHash("sha256").update(b).digest();
   const refused = (what, plan, prevTxs, re) => {
     try {
@@ -272,9 +272,9 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
        sv.length === n && sv.every((s) => s.sig[0] === 0x30 && s.sig.at(-1) === 1 && (s.pubkey[0] === 2 || s.pubkey[0] === 3)));
   }
   {
-    const m = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of4_input.psbt`, FP);
+    const m = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of7_input.psbt`, FP);
     const rm = W.setPlan(m.plan).setPrevTxs(m.prevTxs).review();
-    ok("a four-key witness script is not ours to sign; the P2WPKH beside it is", rm.nSign === 1 && rm.willSign[0] && !rm.willSign[1]);
+    ok("a seven-key witness script is not ours to sign; the P2WPKH beside it is", rm.nSign === 1 && rm.willSign[0] && !rm.willSign[1]);
   }
   const base = planFor(`${root}parser/build/vectors/own_p2wsh_2of3_1in.psbt`, FP);
   const fresh = () => Uint8Array.from(base.plan);
@@ -300,7 +300,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   }
   {
     const plan = fresh();
-    plan.fill(0, WS(0), WS(0) + 106);
+    plan.fill(0, WS(0), WS(0) + 220);
     refused("a P2WSH input to be signed without its witness script is refused", plan, base.prevTxs, /SCRIPT/);
   }
   {
@@ -310,16 +310,16 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   }
   {
     const plan = fresh();
-    plan[WS(0)] -= 1;  // 2-of-3 fills all 105 bytes, so shortening it leaves OP_CHECKMULTISIG past the end
+    plan[WS(0)] -= 1;  // shortening the 2-of-3 leaves OP_CHECKMULTISIG past its length
     refused("a byte past the witness script's length is refused", plan, base.prevTxs, /FORMAT/);
     const p2 = fresh();
-    p2.set(p2.subarray(WS(0), WS(0) + 106), WS(1));
+    p2.set(p2.subarray(WS(0), WS(0) + 220), WS(1));
     refused("a witness script for an input that is not there is refused", p2, base.prevTxs, /FORMAT/);
     const p3 = planFor(`${root}parser/build/vectors/own_p2wpkh_1in.psbt`, FP);
-    p3.plan.set(base.plan.subarray(WS(0), WS(0) + 106), WS(0));
+    p3.plan.set(base.plan.subarray(WS(0), WS(0) + 220), WS(0));
     refused("a witness script beside a P2WPKH input is refused", p3.plan, p3.prevTxs, /FORMAT/);
-    const p4 = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of4_input.psbt`, FP);
-    p4.plan.set(base.plan.subarray(WS(0), WS(0) + 106), WS(1));
+    const p4 = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of7_input.psbt`, FP);
+    p4.plan.set(base.plan.subarray(WS(0), WS(0) + 220), WS(1));
     refused("a witness script for a P2WSH input that is not ours is refused", p4.plan, p4.prevTxs, /FORMAT/);
   }
   {
@@ -330,7 +330,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
     rehash(plan);
     check("a 3-of-3 is signed", W.setPlan(plan).setPrevTxs(base.prevTxs).review().nSign, 1);
     const one = fresh();
-    one.fill(0, WS(0), WS(0) + 106);
+    one.fill(0, WS(0), WS(0) + 220);
     one.set([37, 0x51, 0x21, ...ours, 0x51, 0xae], WS(0));
     rehash(one);
     check("a 1-of-1 is signed", W.setPlan(one).setPrevTxs(base.prevTxs).review().nSign, 1);
@@ -391,21 +391,31 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
       ok("an input of another wallet holding our key is refused", /WALLET/.test(e.message));
     }
   }
-  // or_d, as the vectors build it: ours the primary key, then ours the recovery key on <2;3>
-  for (const [name, desc, ours, lock, receive] of [
-    ["own_liana_primary_1in", `wsh(or_d(pk(${K0}),and_v(v:pkh(${K1}),older(52596))))`, 0, 52596,
-     "bc1qvyescgnual500mg9hygc99t5d3tmn6wmtrlh6dnq72pflh5svnmqaf0qnf"],
-    ["own_liana_recovery_1in", `wsh(or_d(pk(${K1}),and_v(v:pkh(${K0.replace("<0;1>", "<2;3>")}),older(144))))`, 1, 144,
-     "bc1qrk8e4m6gk9mmmy762qy693gg00j7ucxpnyhsagz3hf9tq4kjxvlq0qakku"],
-    ["own_or_d_pk_primary_1in", `wsh(or_d(pk(${K0}),and_v(v:pk(${K1}),older(4194432))))`, 0, { older: 4194432 },
-     "bc1qq49q6090e376j939uwkzradmv8f03dfwzulwxew3chmaas2mjwjqvj4x8a"],
-    ["own_or_d_pk_after_recovery_1in", `wsh(or_d(pk(${K1}),and_v(v:pk(${K0.replace("<0;1>", "<2;3>")}),after(1000000))))`, 1,
-     { after: 1000000 }, "bc1qs3v3chanyx004vefg2x2anm5vll4kpd5pxasknw0sdhtppk27vyqfglwka"],
+  // or_d, as the vectors build it: ours on the primary path, or on the recovery path on <2;3>
+  const R0 = K0.replace("<0;1>", "<2;3>");
+  const [K1A, K2A] = [["3f635a63", "xpub6EM8uMGUZMyVPM95MyiJKaQF476QWxmZZExfShr3eARKprqgqvS9m4ozAPZe4SBAbuBiRxy3QAuYcduqybq2vgXDVpvaioHDVaHbZTxnDMT"],
+                      ["b8688df1", "xpub6EAMBJLn1jiquajTsNRkZXU1oKnA4WJMNvcz4FRR4QmFKdfHxJVvfRLoysWfcc16AMTR4CoMD8UNjvs9JtbsLeuLwpTczgq8zuuERnp8YZF"]]
+    .map(([fp, xpub]) => key(fp, xpub).replace("/0h/2h]", "/1h/2h]"));
+  for (const [name, desc, want, receive] of [
+    ["own_liana_primary_1in", `wsh(or_d(pk(${K0}),and_v(v:pkh(${K1}),older(52596))))`,
+     { ours: 0, primary: 1, recovery: "pkh", older: 52596 }, "bc1qvyescgnual500mg9hygc99t5d3tmn6wmtrlh6dnq72pflh5svnmqaf0qnf"],
+    ["own_liana_recovery_1in", `wsh(or_d(pk(${K1}),and_v(v:pkh(${R0}),older(144))))`,
+     { ours: 1, primary: 1, recovery: "pkh", older: 144 }, "bc1qrk8e4m6gk9mmmy762qy693gg00j7ucxpnyhsagz3hf9tq4kjxvlq0qakku"],
+    ["own_or_d_pk_primary_1in", `wsh(or_d(pk(${K0}),and_v(v:pk(${K1}),older(4194432))))`,
+     { ours: 0, primary: 1, recovery: "pk", older: 4194432 }, "bc1qq49q6090e376j939uwkzradmv8f03dfwzulwxew3chmaas2mjwjqvj4x8a"],
+    ["own_or_d_pk_after_recovery_1in", `wsh(or_d(pk(${K1}),and_v(v:pk(${R0}),after(1000000))))`,
+     { ours: 1, primary: 1, recovery: "pk", after: 1000000 }, "bc1qs3v3chanyx004vefg2x2anm5vll4kpd5pxasknw0sdhtppk27vyqfglwka"],
+    ["own_or_d_multi_ek_primary_1in", `wsh(or_d(multi(2,${K0},${K1},${K2}),and_v(v:pkh(${K3}),after(900000))))`,
+     { ours: 0, primary: 3, threshold: 2, recovery: "pkh", after: 900000 }, "bc1qfyy5qqadpynnnkr9qv0w2mdaq5ksvplv87mds7y7msyvxfvwx4gsqdg548"],
+    ["own_or_d_multi_recovery_1in",
+     `wsh(or_d(multi(2,${K1},${K2},${K3}),and_v(v:multi(2,${R0},${K1A},${K2A}),after(1700000000))))`,
+     { ours: 3, primary: 3, threshold: 2, threshold2: 2, recovery: "multi", after: 1700000000 },
+     "bc1qjp5pmxw4qvf888qdf8lcda7jgcaffc82nl4035shnq6z6rmxnlmskahf27"],
   ]) {
     const l = W.multisigLoad(desc);
-    const want = typeof lock === "number" ? { recovery: "pkh", older: lock, after: 0 } : { recovery: "pk", older: 0, after: 0, ...lock };
-    ok(`${name}: an or_d wallet with Core's receive address`, l.kind === "or_d" && l.ours === ours &&
-       l.recovery === want.recovery && l.older === want.older && l.after === want.after && l.receive === receive);
+    const w = { threshold: 1, threshold2: want.recovery === "multi" ? 2 : 1, older: 0, after: 0, ...want };
+    ok(`${name}: an or_d wallet with Core's receive address`, l.kind === "or_d" && l.receive === receive &&
+       ["ours", "primary", "threshold", "threshold2", "recovery", "older", "after"].every((f) => l[f] === w[f]));
     const v = planFor(`${root}parser/build/vectors/${name}.psbt`, FP);
     const r = W.setPlan(v.plan).setPrevTxs(v.prevTxs).review();
     ok(`${name}: its change is change, and it signs`, r.owner[1] === OWNER.CHANGE && W.sign().length === 1);

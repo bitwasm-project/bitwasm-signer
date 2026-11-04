@@ -12,7 +12,7 @@ const [cPath, rsPath, vecDir] = process.argv.slice(2);
 const load = async (p) => (await WebAssembly.instantiate(readFileSync(p), {})).instance.exports;
 const C = await load(cPath);
 const R = await load(rsPath);
-const PLAN = 6712;
+const PLAN = 8536;
 const hex = (b) => Buffer.from(b).toString("hex");
 
 let checks = 0, differ = 0;

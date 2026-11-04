@@ -14,7 +14,7 @@ import com.dylibso.chicory.wasm.Parser as WasmParser
 // Layout of what the host decodes. signer/tests/layout.c prints these from the structs
 // themselves and `make check-layout` fails if this table drifts from them.
 private object L {
-    const val PLAN_SIZE = 6712
+    const val PLAN_SIZE = 8536
     const val PLAN_N_INPUTS = 16
     const val PLAN_N_OUTPUTS = 17
 
@@ -34,9 +34,9 @@ private object L {
     const val MSG_SIZE = 1101
     const val MSG_ADDRESS = 0; const val MSG_TEXT_KIND = 75; const val MSG_TEXT = 76; const val MSG_TEXT_CAP = 1025
 
-    const val MS_SIZE = 736
+    const val MS_SIZE = 1136
     const val MS_THRESHOLD = 0; const val MS_N = 1; const val MS_OURS = 2; const val MS_FINGERPRINTS = 4
-    const val MS_RECEIVE = 16; const val MS_RECEIVE_CAP = 75; const val MS_DESCRIPTOR = 91; const val MS_DESCRIPTOR_CAP = 640
+    const val MS_RECEIVE = 28; const val MS_RECEIVE_CAP = 75; const val MS_DESCRIPTOR = 103; const val MS_DESCRIPTOR_CAP = 1024
 
     const val MAX_INPUTS = 16; const val MAX_OUTPUTS = 16
     const val XPUB_MAX = 120; const val DESC_MAX = 180; const val PREVTX_MAX = 32768

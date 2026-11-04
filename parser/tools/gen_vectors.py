@@ -31,8 +31,8 @@ def multisig(path):
     return script.multisig(1, [key(path)])
 
 
-# BIP48 P2WSH 2-of-3 with two cosigners from BIP39's other published vectors. m/48h/0h/1h/2h holds four keys:
-# a witness script too long for the plan, so the input is not one we sign
+# BIP48 P2WSH 2-of-3 with two cosigners from BIP39's other published vectors. m/48h/0h/1h/2h holds seven keys,
+# the three seeds at accounts 1 and 3 beside ours: a witness script too long for the plan, so not one we sign
 COSIGNERS = [bip32.HDKey.from_seed(hashlib.pbkdf2_hmac("sha512", m.encode(), b"mnemonic", 2048))
              for m in ("zoo " * 11 + "wrong",
                        "legal winner thank year wave sausage worth useful legal winner thank yellow",
@@ -40,8 +40,9 @@ COSIGNERS = [bip32.HDKey.from_seed(hashlib.pbkdf2_hmac("sha512", m.encode(), b"m
 
 
 def cosigner_keys(path):
-    n = 3 if path.startswith("m/48h/0h/1h") else 2
-    return [c.derive(path).key.get_public_key() for c in COSIGNERS[:n]]
+    if path.startswith("m/48h/0h/1h"):
+        return [c.derive(path.replace("/1h/", a, 1)).key.get_public_key() for a in ("/1h/", "/3h/") for c in COSIGNERS]
+    return [c.derive(path).key.get_public_key() for c in COSIGNERS[:2]]
 
 
 def wsh_script(path):
@@ -152,32 +153,32 @@ build("own_p2wsh_2of3_cosigned", [(W + "/0/1", 100000, 1, True)], [(None, 60000)
       cosigned=True)
 build("own_mixed_p2wsh_nwu", [(A + "/0/0", 100000, 0, True), (W + "/0/2", 50000, 0, True)],
       [(None, 100000), (A + "/1/0", 49000)])
-build("own_with_p2wsh_2of4_input", [(A + "/0/0", 100000, 0, True), ("m/48h/0h/1h/2h/0/0", 30000, 0, True)],
+build("own_with_p2wsh_2of7_input", [(A + "/0/0", 100000, 0, True), ("m/48h/0h/1h/2h/0/0", 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
 build("own_with_foreign_input", [(A + "/0/0", 100000, 0, True), (None, 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
 
 
-# or_d as Liana writes it, or with v:pk / after() as Nunchuk can: ours the primary key on chains 0 and 1, or the
-# recovery key on 2 and 3 as Liana numbers a key's second use. The recovery spend waits on its sequence or locktime
-def build_or_d(name, ours_primary, lock, recovery="pkh", timelock="older"):
-    xpub = lambda k: "[%s%s]%s" % (k.my_fingerprint.hex(), W[1:], k.derive(W).to_public().to_base58())
-    chains = (0, 1) if ours_primary else (2, 3)
+# or_d as Liana, Nunchuk and Keeper write it, the policy with {0} for our key, {1}... for the cosigners, each an
+# (HDKey, account) pair. Ours on chains 0 and 1, or 2 and 3 on the recovery path as Liana numbers a key's second
+# use. The recovery spend waits on its sequence or locktime
+def build_or_d(name, policy, cosigners, ours_recovery, lock, timelock="older"):
+    xpub = lambda k, at: "[%s%s]%s" % (k.my_fingerprint.hex(), at[1:], k.derive(at).to_public().to_base58())
+    chains = (2, 3) if ours_recovery else (0, 1)
 
     def wallet(chain):
-        a, b = "%s/%d/*" % (xpub(root), chain), "%s/%d/*" % (xpub(COSIGNERS[0]), chain - chains[0])
-        primary, b_key = (a, b) if ours_primary else (b, a)
-        return Descriptor.from_string("wsh(or_d(pk(%s),and_v(v:%s(%s),%s(%d))))" % (primary, recovery, b_key, timelock, lock)).derive(0)
+        keys = ["%s/%d/*" % (xpub(root, W), chain)] + ["%s/%d/*" % (xpub(k, at), chain - chains[0]) for k, at in cosigners]
+        return Descriptor.from_string("wsh(%s)" % policy.format(*keys, lock=lock)).derive(0)
 
     def fill(o, chain):
         o.witness_script = wallet(chain).witness_script()
         o.bip32_derivations[key("%s/%d/0" % (W, chain))] = DerivationPath(FP, path_list("%s/%d/0" % (W, chain)))
-        c = COSIGNERS[0].derive("%s/%d/0" % (W, chain - chains[0]))
-        o.bip32_derivations[c.key.get_public_key()] = DerivationPath(COSIGNERS[0].my_fingerprint,
-                                                                     path_list("%s/%d/0" % (W, chain - chains[0])))
+        for k, at in cosigners:
+            at = "%s/%d/0" % (at, chain - chains[0])
+            o.bip32_derivations[k.derive(at).key.get_public_key()] = DerivationPath(k.my_fingerprint, path_list(at))
 
-    seq = lock if timelock == "older" and not ours_primary else 0xFFFFFFFD
-    locktime = lock if timelock == "after" and not ours_primary else 0
+    seq = lock if timelock == "older" and ours_recovery else 0xFFFFFFFD
+    locktime = lock if timelock == "after" and ours_recovery else 0
     s_in, s_change = wallet(chains[0]).script_pubkey(), wallet(chains[1]).script_pubkey()
     ptx = prev_tx(s_in, 100000, 0, 0x40)
     pay = script.p2wpkh(key("m/1h/0"))
@@ -198,10 +199,17 @@ def build_or_d(name, ours_primary, lock, recovery="pkh", timelock="older"):
     json.dump(expected, open(os.path.join(out_dir, name + ".json"), "w"), indent=1)
 
 
-build_or_d("own_liana_primary_1in", True, 52596)
-build_or_d("own_liana_recovery_1in", False, 144)
-build_or_d("own_or_d_pk_primary_1in", True, 4194432, "pk")
-build_or_d("own_or_d_pk_after_recovery_1in", False, 1000000, "pk", "after")
+C0, C1, C2 = ((c, W) for c in COSIGNERS)
+build_or_d("own_liana_primary_1in", "or_d(pk({0}),and_v(v:pkh({1}),older({lock})))", [C0], False, 52596)
+build_or_d("own_liana_recovery_1in", "or_d(pk({1}),and_v(v:pkh({0}),older({lock})))", [C0], True, 144)
+build_or_d("own_or_d_pk_primary_1in", "or_d(pk({0}),and_v(v:pk({1}),older({lock})))", [C0], False, 4194432)
+build_or_d("own_or_d_pk_after_recovery_1in", "or_d(pk({1}),and_v(v:pk({0}),after({lock})))", [C0], True, 1000000,
+           "after")
+# Keeper's Emergency Key, ours in the 2-of-3; then two 2-of-3s, ours on the recovery path, at the plan's 219 bytes
+build_or_d("own_or_d_multi_ek_primary_1in", "or_d(multi(2,{0},{1},{2}),and_v(v:pkh({3}),after({lock})))",
+           [C0, C1, C2], False, 900000, "after")
+build_or_d("own_or_d_multi_recovery_1in", "or_d(multi(2,{1},{2},{3}),and_v(v:multi(2,{0},{4},{5}),after({lock})))",
+           [C0, C1, C2, (COSIGNERS[0], "m/48h/0h/1h/2h"), (COSIGNERS[1], "m/48h/0h/1h/2h")], True, 1700000000, "after")
 
 vectors = json.load(open(sys.argv[1]))
 for kind in ("invalid", "invalid_with_msg", "valid"):
