@@ -57,6 +57,18 @@ rejected without disturbing the rest). Limits: 1024 parts per message, and up to
 waiting to be reduced; the oldest is dropped when full. The PRNG, alias sampler and shuffle that decide which
 fragments a mixed part combines match the Blockchain Commons reference implementation bit for bit.
 
+### Without UR
+
+`build/parser-no-ur.wasm` (`make build/parser-no-ur.wasm`) is the same parser with the `parser_ur_*` exports
+left out (`-DPARSER_NO_UR`), for a host that reassembles animated QR codes itself. The UR decoder's state is
+about 42 KB of linear memory, which on a microcontroller is RAM the host may need more: SeedSigner on an RP2350
+assembles UR with its own decoder and has a 220 KB heap beside the WAMR pool. Its stack is 4 KB rather than
+16 KB, as no vector takes the parser past 1.7 KB. The memory used drops from 138 KB to 83 KB and the module
+from 17 KB to 8 KB.
+
+The fountain decoding of untrusted QR parts then runs in the host instead of the sandbox; the PSBT parse stays
+in it. Its exports are pinned in `tools/parser-no-ur.exports`.
+
 ## Interface
 
 ```
