@@ -25,7 +25,12 @@ enum {
     CORE_ERR_CRYPTO,
     CORE_ERR_NOT_FOUND, /* core_find_address: none of the addresses searched is this one */
     CORE_ERR_WALLET,    /* a multisig without our key, or whose BSMS address disagrees; an input not of it */
+    CORE_ERR_OP_RETURN, /* CORE_OPT_STRICT_OP_RETURN: an OP_RETURN output not made of complete pushes */
 };
+
+/* Options core_set_options takes; core_init clears them. STRICT_OP_RETURN refuses what Bitcoin Core will not
+ * relay (a push past the end, an opcode that pushes nothing), as SeedSigner does; off, it is shown as hex */
+enum { CORE_OPT_STRICT_OP_RETURN = 1 };
 
 typedef enum { CORE_MAINNET = 0, CORE_TESTNET = 1 } core_network_t;
 
@@ -66,6 +71,7 @@ typedef plan_sig_t core_sig_t;
 typedef int (*core_rng_t)(uint8_t *buf, size_t len);
 
 int core_init(core_network_t net);
+void core_set_options(unsigned int opts);
 int core_load_seed(const uint8_t seed[64]);
 void core_unload(void);
 uint32_t core_fingerprint(void);

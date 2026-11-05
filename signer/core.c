@@ -23,6 +23,7 @@
 static uint8_t ctx_mem[256] __attribute__((aligned(16)));
 static secp256k1_context *ctx;
 static core_network_t network;
+static unsigned int options; /* core_set_options; cleared by core_init */
 static bip32_node_t master;
 static uint32_t master_fp;
 static int seed_loaded;
@@ -311,10 +312,38 @@ static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const 
     return CORE_OUT_EXTERNAL;
 }
 
+/* Whether everything after OP_RETURN is a push, as Bitcoin Core's IsPushOnly reads it: up to OP_16 */
+static int op_return_pushes_only(const plan_script_t *s) {
+    size_t i = 1;
+    while (i < s->len) {
+        uint8_t op = s->bytes[i];
+        size_t size = op == 0x4c ? 1 : op == 0x4d ? 2 : op == 0x4e ? 4 : 0, n = op;
+        if (!size && (op == 0 || op > 0x4b)) {
+            if (op > 0x60) return 0;
+            i++;
+            continue;
+        }
+        if (size > s->len - i - 1) return 0;
+        if (size) {
+            n = 0;
+            for (size_t k = size; k; k--) n = n << 8 | s->bytes[i + k];
+        }
+        if (n > s->len - i - 1 - size) return 0;
+        i += 1 + size + n;
+    }
+    return 1;
+}
+
+void core_set_options(unsigned int opts) {
+    options = opts;
+    reviewed = 0; /* an approval given under other options is not these */
+}
+
 int core_init(core_network_t net) {
     if (secp256k1_context_preallocated_size(SECP256K1_CONTEXT_NONE) > sizeof(ctx_mem)) return 0;
     ctx = secp256k1_context_preallocated_create(ctx_mem, SECP256K1_CONTEXT_NONE);
     network = net;
+    options = 0;
     reviewed = msg_reviewed = 0; /* an approval given under the other network is not this one's */
     core_multisig_unload();      /* and neither is a wallet of its keys */
     return ctx != NULL;
@@ -393,6 +422,9 @@ int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core
         r->total_out += p->outputs[i].amount;
         if (r->total_out > MAX_MONEY) return CORE_ERR_FORMAT;
         r->owner[i] = (uint8_t)output_owner(p, r, &p->outputs[i]);
+        if ((options & CORE_OPT_STRICT_OP_RETURN) && p->outputs[i].spk.len && p->outputs[i].spk.bytes[0] == 0x6a &&
+            !op_return_pushes_only(&p->outputs[i].spk))
+            return CORE_ERR_OP_RETURN;
     }
     if (r->total_out > r->total_in) return CORE_ERR_FEE;
     r->fee = r->total_in - r->total_out;

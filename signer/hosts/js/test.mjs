@@ -494,6 +494,8 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("a fresh review", E.signer_message_review(m.length, 84, 0, 0, 0), 0);
   E.signer_init(1);
   check("is forgotten by init", E.signer_message_sign(), 10);
+  check("init takes the strict OP_RETURN flag", E.signer_init(2), 1);
+  check("init refuses flags it does not know", E.signer_init(4), 0);
   E.signer_init(0);
   mem().set(m, E.signer_input());
   E.signer_message_review(m.length, 84, 0, 0, 0);

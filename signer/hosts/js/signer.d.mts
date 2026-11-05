@@ -113,9 +113,11 @@ export class Signer {
     };
     /** @param {WebAssembly.Instance} instance */
     constructor(instance: WebAssembly.Instance);
-    /** Call once, before anything else. `testnet` also covers signet. */
-    init({ testnet }?: {
+    /** Call once, before anything else. `testnet` also covers signet. `strictOpReturn` refuses an OP_RETURN
+     *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
+    init({ testnet, strictOpReturn }?: {
         testnet?: boolean | undefined;
+        strictOpReturn?: boolean | undefined;
     }): this;
     /** Derives the key from a BIP39 mnemonic. PBKDF2 2048 rounds, about half a second.
      *  Takes NFKD-normalised UTF-8 bytes, not strings, because a string cannot be cleared; both arrays
@@ -336,7 +338,7 @@ export type SignerExports = {
     signer_nonce_points: () => number;
     signer_xpub_output: () => number;
     signer_desc_output: () => number;
-    signer_init: (testnet: number) => number;
+    signer_init: (flags: number) => number;
     signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number;
     signer_seed_from_seedqr: (qrLen: number, passLen: number) => number;
     signer_load_seed: () => number;
