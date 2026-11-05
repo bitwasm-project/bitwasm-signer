@@ -16,7 +16,7 @@ const L = {
   },
   sig: { size: 108, input: 0, pubkey: 1, sigLen: 34, sig: 35 },
   message: { size: 1101, address: 0, textKind: 75, text: 76, textCap: 1025 },
-  multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, lock: 1132 },
+  multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, ours2: 1129, lock: 1132 },
   limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, prevtxMax: 32768 },
 };
 
@@ -584,6 +584,8 @@ export class Signer {
       kind: kind & 1 ? "or_d" : "sortedmulti",
       threshold: v.getUint8(m.threshold),
       ours: v.getUint8(m.ours),
+      // or_d: our key on the recovery path too, which signs beside `ours`; -1 without one
+      ours2: kind & 1 && v.getUint8(m.ours2) !== 0xff ? v.getUint8(m.ours2) : -1,
       // or_d: the first `primary` keys can spend at `threshold`; the rest, once older() or after() holds, at
       // `threshold2`, as multi, or one key checked by pk or pkh
       primary: kind & 1 ? primary : n,

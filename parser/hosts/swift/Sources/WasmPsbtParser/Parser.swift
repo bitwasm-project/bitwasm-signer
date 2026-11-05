@@ -22,7 +22,7 @@ private enum L {
     static let inAmount = 40, inSpk = 48, inKey = 132, inSighash = 172
     static let outAmount = 0, outSpk = 8, outKey = 92
     static let keyDepth = 0, keyFingerprint = 4, keyPath = 8
-    static let sigSize = 108, maxInputs = 16
+    static let sigSize = 108, maxInputs = 16, maxSigs = 32
 }
 
 private let pErr = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG"]
@@ -307,16 +307,16 @@ public final class Parser {
 
     /// Insert signatures and return the signed PSBT.
     public func finalize(_ sigs: [Signature]) throws -> [UInt8] {
-        guard sigs.count <= L.maxInputs else {
-            throw ParserError.badSignature("\(sigs.count) signatures, a plan has at most \(L.maxInputs) inputs")
+        guard sigs.count <= L.maxSigs else {
+            throw ParserError.badSignature("\(sigs.count) signatures, at most \(L.maxSigs): two for each input")
         }
         for s in sigs where Int(s.input) >= L.maxInputs || s.pubkey.count != 33 || s.sig.count > 73 {
             throw ParserError.badSignature(
                 "input \(s.input): a signature slot takes a 33-byte pubkey and at most 73 bytes of signature")
         }
         let base = Int(try call("parser_sigs"))
-        _ = try bytes(base, L.sigSize * L.maxInputs)
-        memory.withUnsafeMutableBufferPointer(offset: UInt(base), count: L.sigSize * L.maxInputs) {
+        _ = try bytes(base, L.sigSize * L.maxSigs)
+        memory.withUnsafeMutableBufferPointer(offset: UInt(base), count: L.sigSize * L.maxSigs) {
             for i in 0 ..< $0.count { $0[i] = 0 }
         }
         for (i, s) in sigs.enumerated() {

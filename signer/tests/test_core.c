@@ -178,7 +178,7 @@ static void test_review_and_sign(void) {
     core_prevtx_t prev[PLAN_MAX_INPUTS] = {{0}};
     uint8_t raw0[256], raw1[256], digest[32];
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     unsigned int n;
     plan_t p, q;
 
@@ -421,7 +421,7 @@ static void test_anti_exfil(void) {
     static const uint8_t zero[33] = {0};
     uint8_t n0[32], n1[32], digest[32], x[32], compact[64], first[73], q0[33];
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     secp256k1_ecdsa_signature sig;
     unsigned int n;
     plan_t p;

@@ -82,6 +82,7 @@ int main(void) {
     F(core_multisig_t, descriptor);
     F(core_multisig_t, primary);
     F(core_multisig_t, threshold2);
+    F(core_multisig_t, ours2);
     F(core_multisig_t, lock);
     printf("  \"receive_cap\": %d,\n", ADDRESS_MAX);
     printf("  \"descriptor_cap\": %d\n },\n", CORE_MULTISIG_DESC_MAX);

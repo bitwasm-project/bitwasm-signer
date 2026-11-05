@@ -117,6 +117,28 @@ static int checks, failures;
 #define MX_RECEIVE0_SPK "002090681d99d50312739c0d49ff86f7d2463a94e0ea9feaf8d21798342d0f669ff7"
 #define MX_CHANGE0_SPK "0020a8b5bc019053b5847fad2131790ee63526aed1727d8881d654e02cebe2ec0dd3"
 
+/* Our key on both paths, as Nunchuk and Liana reuse a signer: a 2-of-3 decaying to 1-of-3 over the same three
+ * xpubs at <2;3>, and Liana's pk() with our own pkh() for recovery */
+#define DECAY                                                                                                          \
+    "wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*),and_v(v:multi(1," K0 "/<2;3>/*," K1 "/<2;3>/*," K2 \
+    "/<2;3>/*),older(4320))))"
+#define DECAY_SUM "fsuq87rv"
+#define DECAY_RECEIVE0 "bc1q4r8awzd8ypq7epw4d8v7cj7j2c9vjef6r2plz6ckwsel807l67dqn24nl8"
+#define DECAY_RECEIVE0_WS                                                                                              \
+    "522103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0210254689c4a585b8f3d9ddea8e9e68d0e8f49f7"   \
+    "5709fa6e7d075657573815958a8121028e818df63d6f2dce9308d7455fd4c85cbb39d703608b8fbed647d75e262322d853ae7364512103"   \
+    "e762c58a58500170daf6a9c739087445045c25b01eb1960e7f7ec3b770d5125c2103238910fbaf17e60ce3deb186fe376f59e6797ee486"   \
+    "66a7edcf18538d596428752102143716d9363b54bb8d74b3b397d55c04634d90ffe10663408bc7876060858fa453af02e010b268"
+#define DECAY_RECEIVE0_SPK "0020a8cfd709a72041ec85d569d9ec4bd2560ac9653a1a83f16b167433f3bfdfd79a"
+#define DECAY_CHANGE0_SPK "00205bcad66602c03834f86d9c8a2d8caa871256f246970b0895d8a930ef3b0176ed"
+#define SELF "wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K0 "/<2;3>/*),older(144))))"
+#define SELF_SUM "stvwpa2k"
+#define SELF_RECEIVE0_WS                                                                                               \
+    "2103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0ac736476a9144b47031bbf50a9b3b7be4ecc548e06"   \
+    "37eee2434888ad029000b268"
+#define SELF_RECEIVE0_SPK "002054ede26b0a7790a603a7acfd43e3cf071ebf42fb3b4d9646c6dc2724c10180fd"
+#define SELF_CHANGE0_SPK "00207705e6ceb78c747993ec00b89df543549ad1f65696da380d76a4d91bffb632dd"
+
 static core_multisig_t ms;
 
 static int load(const char *text) {
@@ -152,7 +174,7 @@ static plan_t liana_plan(const char *ws, const char *spk, uint32_t chain, const 
 
 static void liana(void) {
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     unsigned int n_sigs;
     plan_t p;
     char canonical[CORE_MULTISIG_DESC_MAX];
@@ -209,15 +231,13 @@ static void liana(void) {
           "receive and change on the same step");
     CHECK(load("wsh(or_d(pk(" K3 "/<0;1>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(144))))") == CORE_ERR_WALLET,
           "a Liana wallet without our key");
-    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K0 "/<2;3>/*),older(144))))") == CORE_ERR_FORMAT,
-          "our xpub as both keys");
     CHECK(load("wsh(sortedmulti(2," K0 "/<2;3>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT,
           "sortedmulti keeps receive 0, change 1");
 }
 
 static void or_d_variants(void) {
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     unsigned int n_sigs;
     plan_t p;
 
@@ -260,7 +280,7 @@ static void or_d_variants(void) {
 
 static void or_d_multi(void) {
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     unsigned int n_sigs;
     plan_t p;
 
@@ -304,15 +324,58 @@ static void or_d_multi(void) {
     CHECK(load("wsh(or_d(multi(3," K0 "/<0;1>/*," K1 "/<0;1>/*),and_v(v:pkh(" K2 "/<0;1>/*),older(144))))") ==
               CORE_ERR_FORMAT,
           "a threshold above the side's key count");
-    CHECK(load("wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*),and_v(v:multi(2," K0 "/<2;3>/*," K2
-               "/<0;1>/*),older(144))))") == CORE_ERR_FORMAT,
-          "our xpub on both paths, which needs two keys of ours in one input");
     CHECK(load("wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*),and_v(v:pkh(" K3 "/<0;1>/*),older(144))))") ==
                   CORE_OK &&
               ms.n == 3 && ms.primary == 2,
           "a 2-of-2 with one recovery key");
     CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*))") == CORE_ERR_FORMAT,
           "sortedmulti stays at three keys");
+}
+
+static void or_d_two_keys(void) {
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_SIGS];
+    unsigned int n_sigs;
+    plan_t p;
+
+    CHECK(load(DECAY) == CORE_OK && ms.n == 6 && ms.primary == 3 && ms.threshold2 == 1 && ms.ours == 0 &&
+              ms.ours2 == 3 && !strcmp(ms.receive, DECAY_RECEIVE0) && !strcmp(ms.descriptor, DECAY "#" DECAY_SUM),
+          "a decaying 2-of-3 with our xpub on both paths: %s", ms.descriptor);
+    p = liana_plan(DECAY_RECEIVE0_WS, DECAY_RECEIVE0_SPK, 0, DECAY_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE,
+          "an input of it reviewed, its change recognised");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 2 && sigs[0].input == 0 && sigs[1].input == 0 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 2, 33) &&
+              !memcmp(sigs[1].pubkey, p.wscripts[0].bytes + 109, 33),
+          "signed by our key on each path");
+    p = liana_plan(DECAY_RECEIVE0_WS, DECAY_RECEIVE0_SPK, 2, DECAY_CHANGE0_SPK, 3);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_CHANGE &&
+              core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 2 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 109, 33) &&
+              !memcmp(sigs[1].pubkey, p.wscripts[0].bytes + 2, 33),
+          "the same when the PSBT names our recovery key, change on 3");
+    p.inputs[0].key.path[5] = 1;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_NOT_OURS, "our recovery key at another index");
+
+    CHECK(load(SELF) == CORE_OK && ms.ours == 0 && ms.ours2 == 1 && !strcmp(ms.descriptor, SELF "#" SELF_SUM),
+          "Liana with our own key for recovery");
+    p = liana_plan(SELF_RECEIVE0_WS, SELF_RECEIVE0_SPK, 0, SELF_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 2 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 1, 33) && memcmp(sigs[1].pubkey, sigs[0].pubkey, 33),
+          "signed by the pk() key and the pkh() one");
+
+    core_multisig_unload();
+    p = liana_plan(DECAY_RECEIVE0_WS, DECAY_RECEIVE0_SPK, 0, DECAY_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1,
+          "without the wallet, only the key the PSBT names");
+
+    CHECK(load("wsh(or_d(multi(2," K0 "/<0;1>/*," K0 "/<2;3>/*),and_v(v:pkh(" K1 "/<0;1>/*),older(144))))") ==
+              CORE_ERR_FORMAT,
+          "our xpub twice on one path");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K0 "/<1;2>/*),older(144))))") == CORE_ERR_FORMAT,
+          "our xpub on both paths sharing a step");
+    CHECK(load("wsh(or_d(pk(" K0 "/<0;1>/*),and_v(v:pkh(" K0 "/<0;1>/*),older(144))))") == CORE_ERR_FORMAT,
+          "our xpub on both paths at the same steps");
 }
 
 int main(void) {
@@ -419,6 +482,7 @@ int main(void) {
     liana();
     or_d_variants();
     or_d_multi();
+    or_d_two_keys();
 
     core_unload();
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "unloading the seed unloads the wallet");

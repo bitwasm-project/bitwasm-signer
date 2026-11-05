@@ -13,8 +13,8 @@ use crate::psbt::{self, Parsed, EXFIL_KEY, PSBT_MAX, PSBT_OUT_MAX};
 static mut PSBT_IN: [u8; PSBT_MAX] = [0; PSBT_MAX];
 static mut PSBT_OUT: [u8; PSBT_OUT_MAX] = [0; PSBT_OUT_MAX];
 static mut PARSED: Parsed = Parsed::ZERO;
-static mut SIGS: [Sig; plan::MAX_INPUTS] = [Sig::ZERO; plan::MAX_INPUTS];
-static mut POINTS: [[u8; 33]; plan::MAX_INPUTS] = [[0; 33]; plan::MAX_INPUTS];
+static mut SIGS: [Sig; plan::MAX_SIGS] = [Sig::ZERO; plan::MAX_SIGS];
+static mut POINTS: [[u8; 33]; plan::MAX_SIGS] = [[0; 33]; plan::MAX_SIGS];
 static mut IN_LEN: usize = 0;
 static mut IS_PARSED: bool = false;
 
@@ -81,7 +81,7 @@ pub extern "C" fn parser_parse(len: u32, fp: u32) -> i32 {
     unsafe {
         IS_PARSED = false;
         IN_LEN = 0;
-        *(&raw mut POINTS) = [[0; 33]; plan::MAX_INPUTS];
+        *(&raw mut POINTS) = [[0; 33]; plan::MAX_SIGS];
     }
     if len > PSBT_MAX {
         return psbt::Err::Limit as i32;
@@ -101,6 +101,44 @@ pub extern "C" fn parser_parse(len: u32, fp: u32) -> i32 {
     }
 }
 
+/// Writes one partial signature at `o`, and its anti-exfil Q when the host gave one. Returns the new end.
+fn put_sig(dst: &mut [u8], mut o: usize, p2tr: bool, s: &Sig, point: &[u8; 33]) -> usize {
+    // Every length here is below 0xfd, so each compact size is a single byte
+    if !p2tr {
+        dst[o] = 34;
+        dst[o + 1] = 0x02; // PSBT_IN_PARTIAL_SIG
+        o += 2;
+        dst[o..o + 33].copy_from_slice(&s.pubkey);
+        o += 33;
+    } else {
+        dst[o] = 1;
+        dst[o + 1] = 0x13; // PSBT_IN_TAP_KEY_SIG
+        o += 2;
+    }
+    dst[o] = s.sig_len;
+    o += 1;
+    let l = s.sig_len as usize;
+    dst[o..o + l].copy_from_slice(&s.sig[..l]);
+    o += l;
+    if *point != [0; 33] {
+        // PSBT_IN_PROPRIETARY {0xfc, 7, "bitwasm", 2, our key}: the x-only key for P2TR
+        let own = if p2tr { &s.pubkey[1..] } else { &s.pubkey[..] };
+        dst[o] = (EXFIL_KEY.len() + 1 + own.len()) as u8;
+        o += 1;
+        dst[o..o + EXFIL_KEY.len()].copy_from_slice(&EXFIL_KEY);
+        o += EXFIL_KEY.len();
+        dst[o] = 2;
+        o += 1;
+        dst[o..o + own.len()].copy_from_slice(own);
+        o += own.len();
+        dst[o] = 33;
+        o += 1;
+        dst[o..o + 33].copy_from_slice(point);
+        o += 33;
+    }
+    o
+}
+
 /// Called after the host writes `n` signatures to `parser_sigs()`. Returns the signed PSBT's length,
 /// or a negative error.
 #[no_mangle]
@@ -110,21 +148,25 @@ pub extern "C" fn parser_finalize(n: u32) -> i32 {
     let sigs: &[Sig] = unsafe { &*(&raw const SIGS) };
     let points: &[[u8; 33]] = unsafe { &*(&raw const POINTS) };
     let in_len = unsafe { IN_LEN };
-    if !unsafe { IS_PARSED } || n > plan::MAX_INPUTS {
+    if !unsafe { IS_PARSED } || n > plan::MAX_SIGS {
         return -(psbt::Err::Sig as i32);
     }
 
-    // Which signature belongs to which input, rejecting a duplicate or one for an input this module
-    // never offered to sign
-    let mut by_input = [usize::MAX; plan::MAX_INPUTS];
+    // Which signatures belong to which input, at most two and the second only for a P2WSH input and
+    // another key, rejecting one for an input this module never offered to sign
+    let mut by_input = [[usize::MAX; 2]; plan::MAX_INPUTS];
     for k in 0..n {
         let s = &sigs[k];
         let idx = s.input as usize;
-        if idx >= parsed.plan.n_inputs as usize || by_input[idx] != usize::MAX {
+        if idx >= parsed.plan.n_inputs as usize || by_input[idx][1] != usize::MAX {
             return -(psbt::Err::Sig as i32);
         }
         let in_ = &parsed.plan.inputs[idx];
         if in_.key.depth == 0 {
+            return -(psbt::Err::Sig as i32);
+        }
+        let first = by_input[idx][0];
+        if first != usize::MAX && (!in_.spk.is_p2wsh() || sigs[first].pubkey == s.pubkey) {
             return -(psbt::Err::Sig as i32);
         }
         let bad = if !in_.spk.is_p2tr() {
@@ -135,7 +177,7 @@ pub extern "C" fn parser_finalize(n: u32) -> i32 {
         if bad || (points[k] != [0; 33] && points[k][0] != 2 && points[k][0] != 3) {
             return -(psbt::Err::Sig as i32);
         }
-        by_input[idx] = k;
+        by_input[idx][(first != usize::MAX) as usize] = k;
     }
 
     let src: &[u8] = unsafe { core::slice::from_raw_parts((&raw const PSBT_IN) as *const u8, in_len) };
@@ -145,47 +187,15 @@ pub extern "C" fn parser_finalize(n: u32) -> i32 {
     let mut o = 0usize;
     let mut prev = 0usize;
     for i in 0..parsed.plan.n_inputs as usize {
-        let k = by_input[i];
-        if k == usize::MAX {
+        if by_input[i][0] == usize::MAX {
             continue;
         }
-        let s = &sigs[k];
         let end = parsed.in_map_end[i];
         dst[o..o + end - prev].copy_from_slice(&src[prev..end]);
         o += end - prev;
         prev = end;
-        // Every length here is below 0xfd, so each compact size is a single byte
-        if !parsed.plan.inputs[i].spk.is_p2tr() {
-            dst[o] = 34;
-            dst[o + 1] = 0x02; // PSBT_IN_PARTIAL_SIG
-            o += 2;
-            dst[o..o + 33].copy_from_slice(&s.pubkey);
-            o += 33;
-        } else {
-            dst[o] = 1;
-            dst[o + 1] = 0x13; // PSBT_IN_TAP_KEY_SIG
-            o += 2;
-        }
-        dst[o] = s.sig_len;
-        o += 1;
-        let l = s.sig_len as usize;
-        dst[o..o + l].copy_from_slice(&s.sig[..l]);
-        o += l;
-        if points[k] != [0; 33] {
-            // PSBT_IN_PROPRIETARY {0xfc, 7, "bitwasm", 2, our key}: the x-only key for P2TR
-            let own = if parsed.plan.inputs[i].spk.is_p2tr() { &s.pubkey[1..] } else { &s.pubkey[..] };
-            dst[o] = (EXFIL_KEY.len() + 1 + own.len()) as u8;
-            o += 1;
-            dst[o..o + EXFIL_KEY.len()].copy_from_slice(&EXFIL_KEY);
-            o += EXFIL_KEY.len();
-            dst[o] = 2;
-            o += 1;
-            dst[o..o + own.len()].copy_from_slice(own);
-            o += own.len();
-            dst[o] = 33;
-            o += 1;
-            dst[o..o + 33].copy_from_slice(&points[k]);
-            o += 33;
+        for &k in by_input[i].iter().filter(|&&k| k != usize::MAX) {
+            o = put_sig(dst, o, parsed.plan.inputs[i].spk.is_p2tr(), &sigs[k], &points[k]);
         }
     }
     dst[o..o + in_len - prev].copy_from_slice(&src[prev..in_len]);

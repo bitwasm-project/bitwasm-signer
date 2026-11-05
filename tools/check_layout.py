@@ -56,6 +56,7 @@ def main():
         "multisig.kind": truth["core_multisig_t"]["kind"],
         "multisig.primary": truth["core_multisig_t"]["primary"],
         "multisig.threshold2": truth["core_multisig_t"]["threshold2"],
+        "multisig.ours2": truth["core_multisig_t"]["ours2"],
         "multisig.lock": truth["core_multisig_t"]["lock"],
     }
     for name, want in want_js.items():
