@@ -28,7 +28,7 @@ private object L {
     const val SIG_SIZE = 108; const val MAX_INPUTS = 16; const val MAX_SIGS = 32
 }
 
-private val P_ERR = arrayOf("OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG")
+private val P_ERR = arrayOf("OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG", "UTXO_MISMATCH")
 private val UR_ERR = arrayOf("", "SCHEME", "BYTEWORDS", "PART", "MISMATCH", "LIMIT", "MESSAGE", "TYPE")
 
 class ParserException(val code: Int, kind: String = "P_ERR") : Exception(

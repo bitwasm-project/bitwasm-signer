@@ -25,7 +25,7 @@ private enum L {
     static let sigSize = 108, maxInputs = 16, maxSigs = 32
 }
 
-private let pErr = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG"]
+private let pErr = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG", "UTXO_MISMATCH"]
 private let urErr = ["", "SCHEME", "BYTEWORDS", "PART", "MISMATCH", "LIMIT", "MESSAGE", "TYPE"]
 
 public enum ParserError: Error, CustomStringConvertible {

@@ -65,7 +65,7 @@ const L = {
   script: { len: 0, bytes: 1 },
 };
 
-const P_ERR = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG"];
+const P_ERR = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG", "UTXO_MISMATCH"];
 const UR_ERR = ["", "SCHEME", "BYTEWORDS", "PART", "MISMATCH", "LIMIT", "MESSAGE", "TYPE"];
 
 export class ParserError extends Error {

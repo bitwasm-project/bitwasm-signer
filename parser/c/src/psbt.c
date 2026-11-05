@@ -276,7 +276,7 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
         tx_visitor_t v = {NULL, prev_out, &pc};
         tx_info_t info;
         if (!tx_parse(nwu->val, nwu->vlen, &v, &info)) return P_ERR_UTXO;
-        if (!pc.found || memcmp(info.txid, in->prev_txid, 32)) return P_ERR_UTXO;
+        if (!pc.found || memcmp(info.txid, in->prev_txid, 32)) return P_ERR_UTXO_MISMATCH;
         /* Relative to in_buf, not the raw pointer: on wasm32 they happen to be the same, but
          * linking these sources natively truncated a 64-bit pointer and handed the host a bogus offset */
         prevtx_off[idx] = (uint32_t)((const uint8_t *)nwu->val - in_buf);
@@ -293,7 +293,8 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
         in->amount = amount;
         memset(&in->spk, 0, sizeof(in->spk));
         set_script(&in->spk, spk, len);
-        if (nwu && (prev.amount != in->amount || memcmp(&prev.spk, &in->spk, sizeof(in->spk)))) return P_ERR_UTXO;
+        if (nwu && (prev.amount != in->amount || memcmp(&prev.spk, &in->spk, sizeof(in->spk))))
+            return P_ERR_UTXO_MISMATCH;
     }
     if (!wu && !nwu) return P_ERR_UTXO;
     if (sighash != 0xffffffffu && sighash > 0xff) return P_ERR_UNSUPPORTED;
