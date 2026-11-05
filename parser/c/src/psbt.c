@@ -490,6 +490,9 @@ int EXPORT(parser_finalize)(unsigned int n) {
 
 /* ---- UR (animated QR) ---- */
 
+/* PARSER_NO_UR leaves the UR decoder and encoder out, for a host that assembles UR itself (about 42 KB less memory) */
+#ifndef PARSER_NO_UR
+
 static int ur_ready, ur_kind;
 
 /* Starts a new UR. The reassembly buffer is out_buf, which is free until parser_finalize() */
@@ -558,3 +561,4 @@ int EXPORT(parser_ur_encode_cbor)(unsigned int kind, unsigned int len, unsigned 
 int EXPORT(parser_ur_encode_next)(void) {
     return (int)ur_encoder_next((char *)in_buf, sizeof(in_buf));
 }
+#endif

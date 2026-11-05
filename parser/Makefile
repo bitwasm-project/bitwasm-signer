@@ -11,19 +11,29 @@ WASI    ?= /opt/homebrew/opt/wasi-libc/share/wasi-sysroot
 RTLIB   ?= /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/lib/wasm32-unknown-wasip1
 SRC     := c/src/psbt.c c/src/ur.c c/src/tx.c c/src/sha256.c
 
+# $(call wasm,sources,initial memory,extra flags)
+define wasm
+	mkdir -p build
+	$(LLVM)/clang --target=wasm32-wasip1 --sysroot=$(WASI) -nostartfiles -nodefaultlibs -Oz -Wall -Wextra \
+	  -mcpu=lime1 -Xlinker --features=$(LIME1) $(3) \
+	  -Ic/include -Wl,--no-entry -Wl,--gc-sections -Wl,--strip-all -Wl,-z,stack-size=16384 \
+	  -Wl,--export=__heap_base -Wl,--export=__data_end \
+	  -Wl,--initial-memory=$(2) -Wl,--no-growable-memory \
+	  --no-wasm-opt -Wl,--keep-section=target_features \
+	  -o $@ $(1) -lc $(RTLIB)/libclang_rt.builtins.a
+	$(WASM_OPT) $@ -Oz -o $@
+	shasum -a 256 $@
+endef
+
 # The input / output buffers (just over 32 KB each) and the UR decoder need three pages of linear memory. With no memory.grow,
 # WAMR's shrunk-memory option trims it down to __heap_base
 build/parser.wasm: $(SRC) c/include/*.h
-	mkdir -p build
-	$(LLVM)/clang --target=wasm32-wasip1 --sysroot=$(WASI) -nostartfiles -nodefaultlibs -Oz -Wall -Wextra \
-	  -mcpu=lime1 -Xlinker --features=$(LIME1) \
-	  -Ic/include -Wl,--no-entry -Wl,--gc-sections -Wl,--strip-all -Wl,-z,stack-size=16384 \
-	  -Wl,--export=__heap_base -Wl,--export=__data_end \
-	  -Wl,--initial-memory=196608 -Wl,--no-growable-memory \
-	  --no-wasm-opt -Wl,--keep-section=target_features \
-	  -o $@ $(SRC) -lc $(RTLIB)/libclang_rt.builtins.a
-	$(WASM_OPT) $@ -Oz -o $@
-	shasum -a 256 $@
+	$(call wasm,$(SRC),196608,)
+
+# The same parser without UR, for a host that reassembles animated QR codes itself (SeedSigner on an
+# RP2350, where its own decoder runs and the RAM is short). Two pages: the buffers and the 16 KB stack
+build/parser-no-ur.wasm: $(filter-out c/src/ur.c,$(SRC)) c/include/*.h
+	$(call wasm,$(filter-out c/src/ur.c,$(SRC)),131072,-DPARSER_NO_UR)
 
 # The own_* vectors are committed (tests/vectors); the rpc_* ones are a base64 decode of Bitcoin
 # Core's own file. Neither needs a Bitcoin library, which is why there is no longer an embit here
@@ -70,9 +80,10 @@ check-fuzz: build/fuzz_psbt build/fuzz_ur build/corpus/psbt build/corpus/ur
 # returning a bad offset is stopped rather than followed
 # The set of exports is part of the ABI. Growing it by accident is how a module starts offering
 # more than it documents, so the list is pinned and compared
-check-exports: build/parser.wasm
-	wasm-tools print $< | grep -oE '\(export "[^"]+"' | sed 's/(export "//; s/"//' | sort > /tmp/exports.now
-	diff /tmp/exports.now tools/parser.exports && echo "exports unchanged"
+check-exports: build/parser.wasm build/parser-no-ur.wasm
+	@for m in parser parser-no-ur; do \
+	  wasm-tools print build/$$m.wasm | grep -oE '\(export "[^"]+"' | sed 's/(export "//; s/"//' | sort > /tmp/exports.now; \
+	  diff /tmp/exports.now tools/$$m.exports || exit 1; echo "$$m exports unchanged"; done
 .PHONY: check-exports
 
 check-hosts: build/parser.wasm build/vectors/own_p2wpkh_1in.psbt
@@ -91,9 +102,10 @@ check-hosts-kotlin: build/parser.wasm build/vectors/own_p2wpkh_1in.psbt
 	  PSBT=$(PWD)/build/vectors/own_p2wpkh_1in.psbt
 .PHONY: check-hosts-kotlin
 
-test: build/parser.wasm build/vectors/own_p2wpkh_1in.psbt build/test_ur
+test: build/parser.wasm build/parser-no-ur.wasm build/vectors/own_p2wpkh_1in.psbt build/test_ur
 	build/test_ur
 	node tools/run_tests.mjs build/parser.wasm build/vectors tests/rpc_psbt.json tests/ur_vectors.json
+	node tools/run_tests.mjs build/parser-no-ur.wasm build/vectors tests/rpc_psbt.json tests/ur_vectors.json
 	$(MAKE) check-hosts
 	$(MAKE) check-exports
 

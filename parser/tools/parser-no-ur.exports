@@ -1,0 +1,14 @@
+__data_end
+__heap_base
+memory
+parser_finalize
+parser_input
+parser_input_cap
+parser_nonce_points
+parser_nonces
+parser_output
+parser_parse
+parser_plan
+parser_prevtx_len
+parser_prevtx_off
+parser_sigs
