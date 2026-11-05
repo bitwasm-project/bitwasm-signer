@@ -295,10 +295,15 @@ static void test_review_and_sign(void) {
 
     /* An OP_RETURN not made of complete pushes: shown as hex unless the host asked for it to be refused */
     {
-        static const uint8_t ok[][8] = {{1, 0x6a}, {7, 0x6a, 4, 'd', 'a', 't', 'a', 0x51}, {6, 0x6a, 0x4d, 2, 0, 'h', 'i'},
+        static const uint8_t ok[][8] = {{1, 0x6a},
+                                        {7, 0x6a, 4, 'd', 'a', 't', 'a', 0x51},
+                                        {6, 0x6a, 0x4d, 2, 0, 'h', 'i'},
                                         {4, 0x6a, 0x00, 0x4f, 0x60}};
-        static const uint8_t bad[][8] = {{4, 0x6a, 0x10, 'a', 'b'}, {2, 0x6a, 0xac}, {3, 0x6a, 0x4d, 1},
-                                         {6, 0x6a, 0x4e, 0xff, 0xff, 0xff, 0xff}, {4, 0x6a, 1, 'a', 0x61}};
+        static const uint8_t bad[][8] = {{4, 0x6a, 0x10, 'a', 'b'},
+                                         {2, 0x6a, 0xac},
+                                         {3, 0x6a, 0x4d, 1},
+                                         {6, 0x6a, 0x4e, 0xff, 0xff, 0xff, 0xff},
+                                         {4, 0x6a, 1, 'a', 0x61}};
         core_set_options(CORE_OPT_STRICT_OP_RETURN);
         for (unsigned int i = 0; i < sizeof(ok) / sizeof(ok[0]); i++) {
             base_plan(&p);
