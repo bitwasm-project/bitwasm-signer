@@ -263,8 +263,12 @@ typedef struct {
 | 4 | `P_ERR_TX` | no unsigned tx, scriptSig or witness present, non-canonical serialization |
 | 5 | `P_ERR_UNSUPPORTED` | PSBT v2, script longer than 83 bytes, sighash that does not fit in a byte |
 | 6 | `P_ERR_LIMIT` | more than 16 inputs or outputs, PSBT larger than 32,768 bytes |
-| 7 | `P_ERR_UTXO` | input without utxo data, `non_witness_utxo` txid or output mismatch |
+| 7 | `P_ERR_UTXO` | input without utxo data, or a `non_witness_utxo` that does not parse |
 | 8 | `P_ERR_SIG` | invalid signatures passed to `parser_finalize` (returned negated) |
+| 9 | `P_ERR_UTXO_MISMATCH` | utxo data contradicting the input: the `non_witness_utxo`'s txid, the output it should hold, or a `witness_utxo` with another amount or script |
+
+`P_ERR_UTXO_MISMATCH` is apart from `P_ERR_UTXO` because a host may warn differently: missing data is
+a malformed PSBT, but utxo data that contradicts itself is how an input's amount is forged.
 
 The UR functions return negative values:
 
@@ -294,7 +298,7 @@ should be represented, so `plan_t` is this project's own shape. What BIP174 *doe
 > hash in the UTXO.
 
 This module does the first two: a `non_witness_utxo` whose txid or output does not match the unsigned
-transaction is rejected with `P_ERR_UTXO`, and amounts come only from the PSBT's own UTXO data.
+transaction is rejected with `P_ERR_UTXO_MISMATCH`, and amounts come only from the PSBT's own UTXO data.
 The third falls to the signer. The only `redeemScript` in scope is BIP49's P2SH-P2WPKH, and this
 module does not read it: it passes a P2SH input's derivation through, and `signer.wasm` derives the
 redeem script from its own key and refuses the input unless its hash is the UTXO's. A P2WSH input's

@@ -18,8 +18,9 @@ enum {
     P_ERR_TX,          /* no unsigned tx, scriptSig / witness present, non-canonical serialization */
     P_ERR_UNSUPPORTED, /* PSBT v2, script longer than PLAN_MAX_SPK, sighash that does not fit in a byte */
     P_ERR_LIMIT,       /* more inputs / outputs than PLAN_MAX_*, PSBT larger than PSBT_MAX */
-    P_ERR_UTXO,        /* input without utxo data, non_witness_utxo txid / output mismatch */
+    P_ERR_UTXO,        /* input without utxo data, or a non_witness_utxo that does not parse */
     P_ERR_SIG,         /* invalid signatures passed to finalize */
+    P_ERR_UTXO_MISMATCH, /* the utxo data contradicts the input: txid, output, or witness_utxo */
 };
 
 unsigned char *parser_input(void);

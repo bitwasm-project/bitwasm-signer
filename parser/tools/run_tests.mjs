@@ -19,7 +19,7 @@ if (!URV) {
   process.exit(2);
 }
 
-const P_OK = 0, P_ERR_TX = 4, P_ERR_UNSUPPORTED = 5, P_ERR_UTXO = 7;
+const P_OK = 0, P_ERR_TX = 4, P_ERR_UNSUPPORTED = 5, P_ERR_UTXO = 7, P_ERR_UTXO_MISMATCH = 9;
 const UR_ERR_MISMATCH = -4, UR_ERR_TYPE = -7;
 // The defect in invalid_with_msg[15] is the value length of PSBT_IN_MUSIG2_PARTIAL_SIG (0x1c);
 // its message omits musig2
@@ -181,7 +181,7 @@ for (const path of vectorFiles(/^rpc_.*\.psbt$/)) {
           `${kind}[${i}] accepted`);
   }
   if (kind === "valid") {
-    check([P_OK, P_ERR_UNSUPPORTED, P_ERR_UTXO, P_ERR_TX].includes(rc), `valid[${i}] rejected rc=${rc}`);
+    check([P_OK, P_ERR_UNSUPPORTED, P_ERR_UTXO, P_ERR_UTXO_MISMATCH, P_ERR_TX].includes(rc), `valid[${i}] rejected rc=${rc}`);
   }
 }
 
@@ -281,6 +281,19 @@ for (const path of vectorFiles(/^own_.*\.psbt$/)) {
   }
 }
 check(new Parser().finalize([])[0] < 0, "finalize before parse");
+
+// A non_witness_utxo that is not the input's own (its locktime changed, so its txid) is a mismatch,
+// told apart from missing utxo data
+{
+  const raw = readFileSync(join(VEC, "own_mixed_nwu.psbt"));
+  const p = new Parser();
+  check(p.parse(raw, 0) === P_OK, "tampered prevtx: the original parses");
+  const i = [...Array(p.plan().inputs.length).keys()].find((k) => p.prevtx(k).length);
+  const end = p.call("parser_prevtx_off", i) + p.call("parser_prevtx_len", i);
+  const tampered = Buffer.from(raw);
+  tampered[end - 1] ^= 1;
+  check(new Parser().parse(tampered, 0) === P_ERR_UTXO_MISMATCH, "tampered prevtx: P_ERR_UTXO_MISMATCH");
+}
 
 // The UR sections need parser_ur_*. While the Rust port is in progress that module has only the
 // PSBT half, so this runs what it has rather than failing on a function that is not there yet.
