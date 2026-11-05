@@ -28,8 +28,8 @@ const [C0, C0A, C1, C1A, C2] = [
 const pub = (k) => json("getdescriptorinfo", `pk(${k}/0/*)`).descriptor.replace(/^pk\((.*)\/0\/\*\)#.*$/, "$1");
 const withChecksum = (d) => `${d}#${json("getdescriptorinfo", d).checksum}`;
 
-// [name, policy with {o} for ours and {c0}... for the cosigners, the cosigners Core signs for, the timelock]
-// The recovery cases give Core no key on the primary path, so only the recovery path can spend
+// [name, policy with {o} for ours, {o2} ours again on 2 and 3, {c0}... the cosigners, the cosigners Core signs for,
+// the timelock]. The recovery cases give Core no key on the primary path, so only the recovery path can spend
 const CASES = [
   ["Liana, ours the primary key", "or_d(pk({o}),and_v(v:pkh({c0}),older(10)))", [], null],
   ["Liana, ours the recovery key", "or_d(pk({c0}),and_v(v:pkh({o}),older(10)))", [], { older: 10 }],
@@ -40,6 +40,11 @@ const CASES = [
    [], { after: 5 }],
   ["two 2-of-3s at 219 bytes, ours on the recovery path",
    "or_d(multi(2,{c0},{c1},{c2}),and_v(v:multi(2,{o},{c0a},{c1a}),after({h})))", ["c0a"], { after: 5 }],
+  // A reused signer: registered, it signs with both keys, and the recovery path needs the second one
+  ["ours on both paths, spent on the primary path", "or_d(multi(2,{o},{c0},{c1}),and_v(v:multi(2,{o2},{c0a},{c1a}),older(10)))",
+   ["c0"], null],
+  ["ours on both paths, spent on the recovery path", "or_d(multi(2,{o},{c0},{c1}),and_v(v:multi(2,{o2},{c0a},{c1a}),older(10)))",
+   ["c0a"], { older: 10 }],
 ];
 const COSIGNERS = { c0: C0, c0a: C0A, c1: C1, c1a: C1A, c2: C2 };
 
@@ -47,8 +52,9 @@ const P = (await WebAssembly.instantiate(readFileSync(parserPath), {})).instance
 const signerWasm = readFileSync(signerPath);
 const pin = { sha256: createHash("sha256").update(signerWasm).digest("hex") };
 
-/** parser.wasm and signer.wasm sign the PSBT for our key, as a host would; the signed PSBT comes back */
-async function signHere(psbt) {
+/** parser.wasm and signer.wasm sign the PSBT for our keys, as a host would, with the wallet registered when one is
+ *  given; the signed PSBT comes back */
+async function signHere(psbt, registered) {
   const mem = () => new Uint8Array(P.memory.buffer);
   mem().set(psbt, P.parser_input());
   const rc = P.parser_parse(psbt.length, 0x73c5da0a);
@@ -56,10 +62,12 @@ async function signHere(psbt) {
   const plan = mem().slice(P.parser_plan(), P.parser_plan() + Signer.LAYOUT.plan.size);
   const S = await Signer.load(signerWasm, pin);
   try {
-    S.init().seedFromMnemonic(new TextEncoder().encode(MNEMONIC)).setPlan(plan).review();
+    S.init({ testnet: true }).seedFromMnemonic(new TextEncoder().encode(MNEMONIC));
+    if (registered) S.multisigLoad(registered);
+    S.setPlan(plan).review();
     const sigs = S.sign();
     sigs.forEach((s, i) => mem().set(s.raw, P.parser_sigs() + i * Signer.LAYOUT.sig.size));
-    mem().fill(0, P.parser_nonce_points(), P.parser_nonce_points() + 16 * 33);
+    mem().fill(0, P.parser_nonce_points(), P.parser_nonce_points() + 32 * 33);
     const len = P.parser_finalize(sigs.length);
     if (len < 0) throw new Error(`parser_finalize: ${len}`);
     return { psbt: mem().slice(P.parser_output(), P.parser_output() + len), n: sigs.length };
@@ -78,11 +86,13 @@ for (const [name, policy, signs, lock] of CASES) {
   const height = Number(cli("getblockcount"));
   const h = height + 3 + (lock?.after ?? 0); // after() set past the funding block, so the first try is early
   // public: every key public; signing: the cosigners Core signs for with their private keys
-  const wallet = (signing) => {
-    const keys = { o: `${pub(OURS)}/0/*`, h };
-    for (const [c, k] of Object.entries(COSIGNERS)) keys[c] = `${signing && signs.includes(c) ? k : pub(k)}/0/*`;
-    return JSON.stringify([{ desc: withChecksum(`wsh(${policy.replace(/\{(\w+)\}/g, (_, k) => keys[k])})`), range: [0, 0] }]);
+  const wsh = (signing, step) => {
+    const keys = { o: `${pub(OURS)}/${step(0)}/*`, o2: `${pub(OURS)}/${step(2)}/*`, h };
+    for (const [c, k] of Object.entries(COSIGNERS)) keys[c] = `${signing && signs.includes(c) ? k : pub(k)}/${step(0)}/*`;
+    return `wsh(${policy.replace(/\{(\w+)\}/g, (_, k) => keys[k])})`;
   };
+  const wallet = (signing) => JSON.stringify([{ desc: withChecksum(wsh(signing, (s) => s)), range: [0, 0] }]);
+  const registered = policy.includes("{o2}") ? wsh(false, (s) => `<${s};${s + 1}>`) : null;
   const withCore = (psbt, signing) => json("descriptorprocesspsbt", psbt, wallet(signing), "ALL", "true", "false").psbt;
   const [address] = json("deriveaddresses", JSON.parse(wallet(false))[0].desc, "[0,0]");
   const txid = cli("-rpcwallet=miner", "sendtoaddress", address, "0.001");
@@ -94,10 +104,10 @@ for (const [name, policy, signs, lock] of CASES) {
   const unsigned = cli("createpsbt", JSON.stringify([{ txid, vout, sequence }]), JSON.stringify([{ [pay]: 0.0009 }]),
                        String(locktime));
   const filled = withCore(unsigned, false);
-  const ours = await signHere(Buffer.from(filled, "base64"));
+  const ours = await signHere(Buffer.from(filled, "base64"), registered);
   const both = withCore(Buffer.from(ours.psbt).toString("base64"), true), alone = withCore(filled, true);
   const problems = [];
-  if (ours.n !== 1) problems.push(`signer.wasm made ${ours.n} signatures`);
+  if (ours.n !== (registered ? 2 : 1)) problems.push(`signer.wasm made ${ours.n} signatures`);
   if (json("finalizepsbt", alone).complete) problems.push("Core finalized it without our signature");
   const fin = json("finalizepsbt", both);
   if (!fin.complete) {

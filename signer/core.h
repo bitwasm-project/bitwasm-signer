@@ -82,7 +82,8 @@ typedef struct {
  * are left zero */
 int core_facts(const plan_t *p, core_facts_t *f);
 int core_display(const plan_t *p, const core_review_t *r, core_display_t *d);
-int core_sign(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_INPUTS], unsigned int *n_sigs);
+/* With a registered or_d wallet that has our key on both paths, an input of it gets a signature from each */
+int core_sign(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_SIGS], unsigned int *n_sigs);
 /* Anti-exfil: a coordinator's 32 random bytes for input i, used by the next core_sign() and then forgotten. That
  * input's nonce is then k = q + H(Q, m, n), and core_nonce_point(k) is the Q of sigs[k] (33 bytes, zero if none) */
 int core_set_host_nonce(unsigned int i, const uint8_t n[32]);
@@ -121,9 +122,9 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
 
 /* Registers a P2WSH sortedmulti wallet of at most three keys from a descriptor, a BSMS 1.0 record or a Coldcard
  * setup file, or wsh(or_d(X,and_v(v:Y,older(n)))) from its descriptor: X pk() or multi() of up to three keys, Y the
- * same or pkh(), and after(n) as well. From then on
- * its inputs are signed only when their witness script is the wallet's, and its outputs at our key's paths are
- * shown as change. Unloading the seed unloads it too */
+ * same or pkh(), and after(n) as well; the seed may hold a key on each path, one xpub under <0;1> and <2;3> too.
+ * From then on its inputs are signed only when their witness script is the wallet's, and its outputs at our
+ * keys' paths are shown as change. Unloading the seed unloads it too */
 #define CORE_MULTISIG_DESC_MAX 1024
 #define CORE_MULTISIG_MAX_KEYS 6
 /* kind is SORTEDMULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock) */
@@ -135,6 +136,7 @@ typedef struct {
     char receive[ADDRESS_MAX]; /* the first receive address, to compare with the coordinator's */
     char descriptor[CORE_MULTISIG_DESC_MAX];
     uint8_t primary, threshold2; /* OR_D: how many keys are the primary's; the recovery's threshold */
+    uint8_t ours2;               /* OR_D: our key on the recovery path when ours is on the primary too, else 0xff */
     uint32_t lock;               /* OR_D: the older() or after() value after which the recovery keys can spend */
 } core_multisig_t;
 int core_multisig_load(const char *text, size_t len, core_multisig_t *out);

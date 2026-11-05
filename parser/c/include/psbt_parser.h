@@ -8,7 +8,7 @@
 #include "plan.h"
 
 #define PSBT_MAX 32768
-#define PSBT_OUT_MAX (PSBT_MAX + PLAN_MAX_INPUTS * 192) /* a signature and an anti-exfil Q per input */
+#define PSBT_OUT_MAX (PSBT_MAX + PLAN_MAX_SIGS * 192) /* a signature and an anti-exfil Q for each */
 
 enum {
     P_OK = 0,
@@ -31,11 +31,13 @@ plan_t *parser_plan(void);
 unsigned int parser_prevtx_off(unsigned int i);
 unsigned int parser_prevtx_len(unsigned int i);
 plan_sig_t *parser_sigs(void);
-/* Inserts the n signatures written to parser_sigs() and returns the signed PSBT length, or -P_ERR_SIG */
+/* Inserts the n signatures written to parser_sigs(), at most two per input with different keys, and returns the
+ * signed PSBT length, or -P_ERR_SIG */
 int parser_finalize(unsigned int n);
-/* Anti-exfil, 16 x 33 bytes each. nonces: per input, 1 then the coordinator's n from the proprietary field
- * {0xfc, 7, "bitwasm", 1}, for signer_nonces(). points: the host writes signer_nonce_points() here before
- * parser_finalize(), which adds each non-zero Q as {0xfc, 7, "bitwasm", 2, pubkey}, the x-only key for P2TR */
+/* Anti-exfil. nonces: 16 x 33 bytes, per input, 1 then the coordinator's n from the proprietary field
+ * {0xfc, 7, "bitwasm", 1}, for signer_nonces(). points: 32 x 33, one per signature: the host writes
+ * signer_nonce_points() here before parser_finalize(), which adds each non-zero Q as {0xfc, 7, "bitwasm", 2,
+ * pubkey}, the x-only key for P2TR */
 unsigned char *parser_nonces(void);
 unsigned char *parser_nonce_points(void);
 unsigned char *parser_output(void);

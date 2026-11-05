@@ -100,6 +100,7 @@ export class Signer {
             descriptorCap: number;
             primary: number;
             threshold2: number;
+            ours2: number;
             lock: number;
         };
         limits: {
@@ -281,6 +282,7 @@ export class Signer {
         kind: string;
         threshold: number;
         ours: number;
+        ours2: number;
         primary: number;
         threshold2: number;
         recovery: string;
@@ -296,6 +298,7 @@ export class Signer {
         kind: string;
         threshold: number;
         ours: number;
+        ours2: number;
         primary: number;
         threshold2: number;
         recovery: string;

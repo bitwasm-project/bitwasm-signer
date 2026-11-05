@@ -162,19 +162,20 @@ build("own_with_foreign_input", [(A + "/0/0", 100000, 0, True), (None, 30000, 0,
 # or_d as Liana, Nunchuk and Keeper write it, the policy with {0} for our key, {1}... for the cosigners, each an
 # (HDKey, account) pair. Ours on chains 0 and 1, or 2 and 3 on the recovery path as Liana numbers a key's second
 # use. The recovery spend waits on its sequence or locktime
-def build_or_d(name, policy, cosigners, ours_recovery, lock, timelock="older"):
+def build_or_d(name, policy, cosigners, ours_recovery, lock, timelock="older", wallet_desc=None):
     xpub = lambda k, at: "[%s%s]%s" % (k.my_fingerprint.hex(), at[1:], k.derive(at).to_public().to_base58())
     chains = (2, 3) if ours_recovery else (0, 1)
+    # (key, origin, step): step 2 puts a key, our own included, on <2;3> as a signer's second use
+    keys = [(root, W, chains[0])] + [c if len(c) == 3 else (*c, 0) for c in cosigners]
 
     def wallet(chain):
-        keys = ["%s/%d/*" % (xpub(root, W), chain)] + ["%s/%d/*" % (xpub(k, at), chain - chains[0]) for k, at in cosigners]
-        return Descriptor.from_string("wsh(%s)" % policy.format(*keys, lock=lock)).derive(0)
+        steps = ["%s/%d/*" % (xpub(k, at), chain - chains[0] + step) for k, at, step in keys]
+        return Descriptor.from_string("wsh(%s)" % policy.format(*steps, lock=lock)).derive(0)
 
     def fill(o, chain):
         o.witness_script = wallet(chain).witness_script()
-        o.bip32_derivations[key("%s/%d/0" % (W, chain))] = DerivationPath(FP, path_list("%s/%d/0" % (W, chain)))
-        for k, at in cosigners:
-            at = "%s/%d/0" % (at, chain - chains[0])
+        for k, at, step in keys:
+            at = "%s/%d/0" % (at, chain - chains[0] + step)
             o.bip32_derivations[k.derive(at).key.get_public_key()] = DerivationPath(k.my_fingerprint, path_list(at))
 
     seq = lock if timelock == "older" and ours_recovery else 0xFFFFFFFD
@@ -189,6 +190,7 @@ def build_or_d(name, policy, cosigners, ours_recovery, lock, timelock="older"):
     fill(psbt.outputs[1], chains[1])
     open(os.path.join(out_dir, name + ".psbt"), "wb").write(psbt.serialize())
     ours = "%s/%d/0" % (W, chains[0])
+    again = [k for k in keys[1:] if k[0] is root]
     expected = {"fingerprint": int.from_bytes(FP, "big"), "tx_version": 2, "locktime": locktime,
                 "inputs": [{"prev_txid": bytes(reversed(ptx.txid())).hex(), "prev_vout": 0, "sequence": seq,
                             "amount": 100000, "spk": s_in.data.hex(), "key": keypath(ours), "sighash_type": 1,
@@ -196,6 +198,11 @@ def build_or_d(name, policy, cosigners, ours_recovery, lock, timelock="older"):
                 "outputs": [{"amount": 60000, "spk": pay.data.hex(), "key": None},
                             {"amount": 39000, "spk": s_change.data.hex(), "key": keypath("%s/%d/0" % (W, chains[1]))}],
                 "pubkeys": [key(ours).sec().hex()]}
+    if again:
+        # our key on both paths: the second signature, and the wallet to register for it
+        expected["second"] = [key("%s/%d/0" % (W, again[0][2])).sec().hex()]
+        steps = ["%s/<%d;%d>/*" % (xpub(k, at), step, step + 1) for k, at, step in keys]
+        expected["wallet"] = "wsh(%s)" % policy.format(*steps, lock=lock)
     json.dump(expected, open(os.path.join(out_dir, name + ".json"), "w"), indent=1)
 
 
@@ -210,6 +217,9 @@ build_or_d("own_or_d_multi_ek_primary_1in", "or_d(multi(2,{0},{1},{2}),and_v(v:p
            [C0, C1, C2], False, 900000, "after")
 build_or_d("own_or_d_multi_recovery_1in", "or_d(multi(2,{1},{2},{3}),and_v(v:multi(2,{0},{4},{5}),after({lock})))",
            [C0, C1, C2, (COSIGNERS[0], "m/48h/0h/1h/2h"), (COSIGNERS[1], "m/48h/0h/1h/2h")], True, 1700000000, "after")
+# Our key on both paths, as a reused signer: two signatures in the one input
+build_or_d("own_or_d_two_keys_1in", "or_d(multi(2,{0},{1},{2}),and_v(v:multi(2,{5},{3},{4}),older({lock})))",
+           [C0, C1, (COSIGNERS[0], "m/48h/0h/1h/2h"), (COSIGNERS[1], "m/48h/0h/1h/2h"), (root, W, 2)], False, 4320)
 
 vectors = json.load(open(sys.argv[1]))
 for kind in ("invalid", "invalid_with_msg", "valid"):

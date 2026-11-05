@@ -1,0 +1,57 @@
+{
+ "fingerprint": 1942346250,
+ "tx_version": 2,
+ "locktime": 0,
+ "inputs": [
+  {
+   "prev_txid": "1e29fd5e3551aa4c80b2c4692b5dac078edf44864c6b042e80368cc78e290cfa",
+   "prev_vout": 0,
+   "sequence": 4294967293,
+   "amount": 100000,
+   "spk": "0020a4fd55f2719938fe3f596e5a25b11329703a610743c9478babe238344bf63c24",
+   "key": {
+    "fingerprint": 1942346250,
+    "path": [
+     2147483696,
+     2147483648,
+     2147483648,
+     2147483650,
+     0,
+     0
+    ]
+   },
+   "sighash_type": 1,
+   "wscript": "522103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815958a8121028e818df63d6f2dce9308d7455fd4c85cbb39d703608b8fbed647d75e262322d853ae7364522103e762c58a58500170daf6a9c739087445045c25b01eb1960e7f7ec3b770d5125c21027fea83cba9510d4c21bf9fa7fca1d10f9e116a923653830d9c1dec41b70ea30c2102a6dd7f84904c4dd24d242cd35053595f911d48fd4f07cfc78420895e12704c8953af02e010b268",
+   "has_prevtx": false
+  }
+ ],
+ "outputs": [
+  {
+   "amount": 60000,
+   "spk": "0014a5a739ef69cf8c068e94456322671139dab876ea",
+   "key": null
+  },
+  {
+   "amount": 39000,
+   "spk": "0020ddbec2140d801806fc720a0579ba2a7eae963a7d883ff53fa307663b9aa1fd1a",
+   "key": {
+    "fingerprint": 1942346250,
+    "path": [
+     2147483696,
+     2147483648,
+     2147483648,
+     2147483650,
+     1,
+     0
+    ]
+   }
+  }
+ ],
+ "pubkeys": [
+  "03dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e0"
+ ],
+ "second": [
+  "03e762c58a58500170daf6a9c739087445045c25b01eb1960e7f7ec3b770d5125c"
+ ],
+ "wallet": "wsh(or_d(multi(2,[73c5da0a/48h/0h/0h/2h]xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf/<0;1>/*,[3f635a63/48h/0h/0h/2h]xpub6FHZCoNb3tg3o1GAJQxSwgFNF8mLRtTk2GgkF7n5rwzoxBhUEdFWa8cyZRHqytAzKZWsKz8627cQEMCCfR5GDSv6yXegqirpgDUX41Pxybr/<0;1>/*,[b8688df1/48h/0h/0h/2h]xpub6FQya7zGhR92kacYsNnjreouvnHJMpXYsUXnW6NJJAJRCKsa26TzDy4LdnGhEurr3d6y1J8PJ7EEMKQp74XTqYvmGJNogYXSKDszYHtF8mX/<0;1>/*),and_v(v:multi(2,[73c5da0a/48h/0h/0h/2h]xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf/<2;3>/*,[3f635a63/48h/0h/1h/2h]xpub6EM8uMGUZMyVPM95MyiJKaQF476QWxmZZExfShr3eARKprqgqvS9m4ozAPZe4SBAbuBiRxy3QAuYcduqybq2vgXDVpvaioHDVaHbZTxnDMT/<0;1>/*,[b8688df1/48h/0h/1h/2h]xpub6EAMBJLn1jiquajTsNRkZXU1oKnA4WJMNvcz4FRR4QmFKdfHxJVvfRLoysWfcc16AMTR4CoMD8UNjvs9JtbsLeuLwpTczgq8zuuERnp8YZF/<0;1>/*),older(4320))))"
+}
