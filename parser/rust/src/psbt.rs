@@ -12,7 +12,7 @@ use crate::tx;
 
 pub const PSBT_MAX: usize = 32768;
 /// A signature and an anti-exfil Q per input.
-pub const PSBT_OUT_MAX: usize = PSBT_MAX + plan::MAX_INPUTS * 192;
+pub const PSBT_OUT_MAX: usize = PSBT_MAX + plan::MAX_SIGS * 192;
 /// The proprietary key prefix of the anti-exfil fields: 1 is the coordinator's n, 2 our Q.
 pub const EXFIL_KEY: [u8; 9] = [0xfc, 7, b'b', b'i', b't', b'w', b'a', b's', b'm'];
 const MAX_KV: usize = 64;
@@ -32,10 +32,13 @@ pub enum Err {
     Unsupported = 5,
     /// More inputs or outputs than the plan holds, or a PSBT larger than PSBT_MAX.
     Limit = 6,
-    /// An input with no utxo data, or a non_witness_utxo that does not match what it claims.
+    /// An input with no utxo data, or a non_witness_utxo that does not parse.
     Utxo = 7,
     /// Signatures handed to finalize that this module will not insert.
     Sig = 8,
+    /// Utxo data that contradicts the input: the non_witness_utxo's txid or output, or a
+    /// witness_utxo with another amount or script.
+    UtxoMismatch = 9,
 }
 
 pub type Res = Result<(), Err>;
@@ -434,7 +437,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
             return Err(Err::Utxo);
         }
         if !found || info.txid != in_.prev_txid {
-            return Err(Err::Utxo);
+            return Err(Err::UtxoMismatch);
         }
         in_.amount = amount;
         in_.spk = spk;
@@ -462,7 +465,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
         in_.spk.set(spk);
         // Both forms present: they have to agree, or one of them is lying
         if nwu.is_some() && (prev_amount != in_.amount || prev_spk != in_.spk) {
-            return Err(Err::Utxo);
+            return Err(Err::UtxoMismatch);
         }
     }
 

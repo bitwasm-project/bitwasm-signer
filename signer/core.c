@@ -23,6 +23,7 @@
 static uint8_t ctx_mem[256] __attribute__((aligned(16)));
 static secp256k1_context *ctx;
 static core_network_t network;
+static unsigned int options; /* core_set_options; cleared by core_init */
 static bip32_node_t master;
 static uint32_t master_fp;
 static int seed_loaded;
@@ -33,9 +34,9 @@ static uint32_t msg_path[5];
 static size_t msg_len;
 static int msg_reviewed;
 static ms_wallet_t wallet; /* the registered multisig, with ours its key that the seed re-derives */
-static int wallet_ours = -1;
+static int wallet_ours = -1, wallet_ours2 = -1; /* ours2: an or_d's other key of ours, on the recovery path */
 static uint8_t host_nonce[PLAN_MAX_INPUTS][32], host_nonce_set[PLAN_MAX_INPUTS];
-static uint8_t nonce_points[PLAN_MAX_INPUTS][33]; /* Q for each signature core_sign() made, zero without a host nonce */
+static uint8_t nonce_points[PLAN_MAX_SIGS][33]; /* Q for each signature core_sign() made, zero without a host nonce */
 
 enum { SPK_OTHER, SPK_P2WPKH, SPK_P2SH_P2WPKH, SPK_P2TR, SPK_P2WSH };
 _Static_assert(MS_MAX_KEYS == CORE_MULTISIG_MAX_KEYS && MS_SORTEDMULTI == CORE_WALLET_SORTEDMULTI &&
@@ -239,20 +240,31 @@ static NOINLINE int prevtx_ok(const plan_input_t *in, const core_prevtx_t *prev)
     return tx_parse(prev->raw, prev->len, &v, &info) && m.found && !memcmp(info.txid, in->prev_txid, 32);
 }
 
+/* Which of our keys in the registered wallet this path is under: its origin, then one of its own two steps */
+static const ms_key_t *wallet_key(const plan_keypath_t *k) {
+    for (int j = 0; j < 2; j++) {
+        const int i = j ? wallet_ours2 : wallet_ours;
+        const ms_key_t *m = &wallet.keys[i < 0 ? 0 : i];
+        if (i >= 0 && k->depth == m->depth + 2 && k->fingerprint == master_fp &&
+            !memcmp(k->path, m->path, m->depth * 4u) &&
+            (k->path[m->depth] == m->child[0] || k->path[m->depth] == m->child[1]))
+            return m;
+    }
+    return NULL;
+}
+
 /* Is our key's step after the xpub its change one? Only for a path in_wallet_at() accepted */
 static int wallet_change(const plan_keypath_t *k) {
-    const ms_key_t *m = &wallet.keys[wallet_ours];
+    const ms_key_t *m = wallet_key(k);
     return k->path[m->depth] == m->child[1];
 }
 
 /* Is this key path ours in the registered wallet, and the witness script the one the wallet makes there? With
  * ws NULL, writes that script's P2WSH hash to spk_hash instead */
 static int in_wallet_at(const plan_keypath_t *k, const plan_wscript_t *ws, uint8_t spk_hash[32]) {
-    const ms_key_t *m = &wallet.keys[wallet_ours];
+    const ms_key_t *m = wallet_key(k);
     plan_wscript_t mine;
-    if (k->depth != m->depth + 2 || k->fingerprint != master_fp || memcmp(k->path, m->path, m->depth * 4u) ||
-        (k->path[m->depth] != m->child[0] && k->path[m->depth] != m->child[1]) ||
-        k->path[m->depth + 1] >= MAX_ADDRESS_INDEX ||
+    if (!m || k->path[m->depth + 1] >= MAX_ADDRESS_INDEX ||
         !ms_wscript(&wallet, (uint32_t)wallet_change(k), k->path[m->depth + 1], &mine))
         return 0;
     if (!ws) return sha256(mine.bytes, mine.len, spk_hash), 1;
@@ -300,10 +312,38 @@ static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const 
     return CORE_OUT_EXTERNAL;
 }
 
+/* Whether everything after OP_RETURN is a push, as Bitcoin Core's IsPushOnly reads it: up to OP_16 */
+static int op_return_pushes_only(const plan_script_t *s) {
+    size_t i = 1;
+    while (i < s->len) {
+        uint8_t op = s->bytes[i];
+        size_t size = op == 0x4c ? 1 : op == 0x4d ? 2 : op == 0x4e ? 4 : 0, n = op;
+        if (!size && (op == 0 || op > 0x4b)) {
+            if (op > 0x60) return 0;
+            i++;
+            continue;
+        }
+        if (size > s->len - i - 1) return 0;
+        if (size) {
+            n = 0;
+            for (size_t k = size; k; k--) n = n << 8 | s->bytes[i + k];
+        }
+        if (n > s->len - i - 1 - size) return 0;
+        i += 1 + size + n;
+    }
+    return 1;
+}
+
+void core_set_options(unsigned int opts) {
+    options = opts;
+    reviewed = 0; /* an approval given under other options is not these */
+}
+
 int core_init(core_network_t net) {
     if (secp256k1_context_preallocated_size(SECP256K1_CONTEXT_NONE) > sizeof(ctx_mem)) return 0;
     ctx = secp256k1_context_preallocated_create(ctx_mem, SECP256K1_CONTEXT_NONE);
     network = net;
+    options = 0;
     reviewed = msg_reviewed = 0; /* an approval given under the other network is not this one's */
     core_multisig_unload();      /* and neither is a wallet of its keys */
     return ctx != NULL;
@@ -382,6 +422,9 @@ int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core
         r->total_out += p->outputs[i].amount;
         if (r->total_out > MAX_MONEY) return CORE_ERR_FORMAT;
         r->owner[i] = (uint8_t)output_owner(p, r, &p->outputs[i]);
+        if ((options & CORE_OPT_STRICT_OP_RETURN) && p->outputs[i].spk.len && p->outputs[i].spk.bytes[0] == 0x6a &&
+            !op_return_pushes_only(&p->outputs[i].spk))
+            return CORE_ERR_OP_RETURN;
     }
     if (r->total_out > r->total_in) return CORE_ERR_FEE;
     r->fee = r->total_in - r->total_out;
@@ -497,7 +540,7 @@ static int exfil_schnorr(uint8_t *nonce32, const uint8_t *msg, size_t msglen, co
     return msglen == 32 && exfil_nonce(nonce32, msg, key32, data);
 }
 
-static int sign_input(const plan_t *p, unsigned int i, core_sig_t *s, uint8_t point[33]) {
+static int sign_input(const plan_t *p, unsigned int i, const plan_keypath_t *key, core_sig_t *s, uint8_t point[33]) {
     const plan_input_t *in = &p->inputs[i];
     uint8_t digest[32], xonly[32];
     secp256k1_ecdsa_signature sig;
@@ -506,7 +549,7 @@ static int sign_input(const plan_t *p, unsigned int i, core_sig_t *s, uint8_t po
     secp256k1_xonly_pubkey xpub;
     bip32_node_t node;
     size_t len = 72;
-    int ok = owns(&in->key, &in->spk, &p->wscripts[i], &node);
+    int ok = owns(key, &in->spk, &p->wscripts[i], &node);
     exfil_t ex = {host_nonce_set[i] ? host_nonce[i] : NULL, {0}};
 
     s->input = (uint8_t)i;
@@ -565,10 +608,23 @@ int core_set_host_nonce(unsigned int i, const uint8_t n[32]) {
 }
 
 const uint8_t *core_nonce_point(unsigned int k) {
-    return k < PLAN_MAX_INPUTS ? nonce_points[k] : NULL;
+    return k < PLAN_MAX_SIGS ? nonce_points[k] : NULL;
 }
 
-static int sign_all(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_INPUTS], unsigned int *n_sigs) {
+/* Our other key in the registered wallet at the same chain and index as k, when the wallet has two of ours. The
+ * signature is still made only if owns() finds that key in the input's witness script */
+static int other_key(const plan_keypath_t *k, plan_keypath_t *out) {
+    const ms_key_t *m = wallet_ours2 >= 0 ? wallet_key(k) : NULL, *o;
+    if (!m) return 0;
+    o = &wallet.keys[m == &wallet.keys[wallet_ours] ? wallet_ours2 : wallet_ours];
+    memset(out, 0, sizeof(*out));
+    out->depth = (uint8_t)(o->depth + 2), out->fingerprint = master_fp;
+    memcpy(out->path, o->path, o->depth * 4u);
+    out->path[o->depth] = o->child[wallet_change(k)], out->path[o->depth + 1] = k->path[m->depth + 1];
+    return 1;
+}
+
+static int sign_all(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_SIGS], unsigned int *n_sigs) {
     uint8_t h[32], blind[32];
 
     *n_sigs = 0;
@@ -583,20 +639,27 @@ static int sign_all(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_IN
     /* The hash above already proved this is the plan review saw, so only inputs review confirmed get here */
     for (unsigned int i = 0; i < p->n_inputs; i++) {
         const plan_input_t *in = &p->inputs[i];
+        plan_keypath_t other;
+        int ok;
         if (in->key.depth == 0 || in->key.fingerprint != master_fp) continue;
-        if (!sign_input(p, i, &sigs[*n_sigs], nonce_points[*n_sigs])) {
-            wipe(sigs, sizeof(core_sig_t) * PLAN_MAX_INPUTS);
+        ok = sign_input(p, i, &in->key, &sigs[*n_sigs], nonce_points[*n_sigs]);
+        if (ok) (*n_sigs)++;
+        if (ok && spk_type(&in->spk) == SPK_P2WSH && other_key(&in->key, &other)) {
+            ok = sign_input(p, i, &other, &sigs[*n_sigs], nonce_points[*n_sigs]);
+            if (ok) (*n_sigs)++;
+        }
+        if (!ok) {
+            wipe(sigs, sizeof(core_sig_t) * PLAN_MAX_SIGS);
             memset(nonce_points, 0, sizeof(nonce_points));
             *n_sigs = 0;
             return CORE_ERR_CRYPTO;
         }
-        (*n_sigs)++;
     }
     reviewed = 0;
     return CORE_OK;
 }
 
-int core_sign(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_INPUTS], unsigned int *n_sigs) {
+int core_sign(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_SIGS], unsigned int *n_sigs) {
     const int rc = sign_all(p, rng, sigs, n_sigs);
     memset(host_nonce_set, 0, sizeof(host_nonce_set)); /* a failed attempt must not hand its n to the next */
     return rc;
@@ -864,21 +927,22 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
     uint8_t pub[33], spk[34] = {0x00, 32};
     plan_wscript_t ws;
     bip32_node_t node;
-    int ours = -1, rc = CORE_ERR_WALLET;
+    int ours = -1, ours2 = -1, rc = CORE_ERR_WALLET;
 
     core_multisig_unload();
     wipe(out, sizeof(*out));
     if (!seed_loaded) return CORE_ERR_NO_SEED;
     if (!ms_parse(text, len, network == CORE_TESTNET, &wallet, stated)) return CORE_ERR_FORMAT;
-    /* Ours is the one key the seed re-derives at its origin, chain code and all. A fingerprint that matches with
-     * another key is most likely the wrong passphrase */
+    /* Ours is a key the seed re-derives at its origin, chain code and all: one, or one on each path of an or_d. A
+     * fingerprint that matches with another key is most likely the wrong passphrase */
     for (unsigned int i = 0; i < wallet.n; i++) {
         const ms_key_t *k = &wallet.keys[i];
         if (k->fingerprint != master_fp) continue;
-        if (ours >= 0 || !bip32_derive(ctx, &master, k->path, k->depth, &node) || !bip32_pubkey(ctx, node.key, pub) ||
+        if (ours2 >= 0 || (ours >= 0 && (!(wallet.kind & MS_OR_D) || ours >= wallet.primary || i < wallet.primary)) ||
+            !bip32_derive(ctx, &master, k->path, k->depth, &node) || !bip32_pubkey(ctx, node.key, pub) ||
             memcmp(pub, k->ser + 45, 33) || memcmp(node.chain, k->ser + 13, 32))
             goto done;
-        ours = (int)i;
+        *(ours < 0 ? &ours : &ours2) = (int)i;
     }
     if (ours < 0 || !ms_wscript(&wallet, 0, 0, &ws)) goto done;
     sha256(ws.bytes, ws.len, spk + 2);
@@ -887,9 +951,9 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
     if (!ms_descriptor(&wallet, network == CORE_TESTNET, out->descriptor)) goto done;
     out->threshold = wallet.threshold, out->n = wallet.n, out->ours = (uint8_t)ours;
     out->kind = wallet.kind, out->lock = wallet.lock, out->primary = wallet.primary,
-    out->threshold2 = wallet.threshold2;
+    out->threshold2 = wallet.threshold2, out->ours2 = (uint8_t)(ours2 < 0 ? 0xff : ours2);
     for (unsigned int i = 0; i < wallet.n; i++) out->fingerprints[i] = wallet.keys[i].fingerprint;
-    wallet_ours = ours;
+    wallet_ours = ours, wallet_ours2 = ours2;
     rc = CORE_OK;
 done:
     wipe(&node, sizeof(node));
@@ -908,7 +972,7 @@ int core_multisig_load_cbor(const uint8_t *cbor, size_t len, core_multisig_t *ou
 
 void core_multisig_unload(void) {
     wipe(&wallet, sizeof(wallet));
-    wallet_ours = -1;
+    wallet_ours = wallet_ours2 = -1;
 }
 
 /* crypto-account: the master fingerprint and, for the account, sh(wpkh()), wpkh(), tr() and the BIP48 key as

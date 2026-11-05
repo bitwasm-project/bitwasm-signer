@@ -43,7 +43,7 @@ PARSER_C_SRC := $(wildcard parser/c/src/*.c)
 C_FORMAT_FILES := $(PARSER_C_SRC) parser/tools/wamr_node.c $(wildcard parser/c/include/*.h parser/tests/*.c signer/*.c signer/tests/*.c) \
   $(filter-out signer/bip39_words.h,$(wildcard signer/*.h))
 
-all: build/parser.wasm build/signer.wasm
+all: build/parser.wasm build/parser-no-ur.wasm build/signer.wasm
 .PHONY: all
 
 deps:
@@ -117,6 +117,12 @@ build/parser.wasm: $(wildcard parser/c/src/*.c parser/c/include/*.h)
 	@mkdir -p build && cp parser/build/parser.wasm $@
 	@shasum -a 256 $@
 endif
+
+# The C parser without UR (parser/README.md), for hosts that reassemble animated QR codes themselves
+build/parser-no-ur.wasm: $(wildcard parser/c/src/*.c parser/c/include/*.h)
+	$(MAKE) -C parser build/parser-no-ur.wasm $(TOOLS)
+	@mkdir -p build && cp parser/build/parser-no-ur.wasm $@
+	@shasum -a 256 $@
 
 # Which one the last build used, so that a stale build/parser.wasm cannot be mistaken for the other
 which-parser: build/parser.wasm
@@ -213,7 +219,7 @@ check-hosts-agree: build/signer.wasm build/parser.wasm
 	  diff build/host-js.out build/host-kotlin.out && echo "JavaScript and Kotlin agree"; \
 	elif [ "$(REQUIRE_KOTLIN)" = "1" ]; then echo "kotlinc not found and REQUIRE_KOTLIN=1"; exit 1; \
 	else echo "kotlinc not found; skipping the Kotlin host"; fi; \
-	if command -v swift >/dev/null && swift --version | grep -Eq 'version (6\.(3|[4-9]|[1-9][0-9]+)|([7-9]|[1-9][0-9]+))\.'; then \
+	if command -v swift >/dev/null && swift --version | grep -Eq 'version (6\.(3|[4-9]|[1-9][0-9]+)|([7-9]|[1-9][0-9]+))[. ]'; then \
 	  $(MAKE) -s -C signer/hosts/swift dump PSBT=$(PWD)/$(PSBT_VECTOR) 2>/dev/null \
 	    | grep -vE '^Building|^Build complete|^\[' > build/host-swift.out; \
 	  diff build/host-js.out build/host-swift.out && echo "JavaScript and Swift agree"; \
@@ -365,8 +371,8 @@ check-types: $(TSC)
 .PHONY: check-types
 
 # What we ship has to have the right shape, checked rather than intended
-check-wasm: build/parser.wasm build/signer.wasm
-	python3 tools/check_wasm.py build/parser.wasm build/signer.wasm
+check-wasm: build/parser.wasm build/parser-no-ur.wasm build/signer.wasm
+	python3 tools/check_wasm.py build/parser.wasm build/parser-no-ur.wasm build/signer.wasm
 .PHONY: check-wasm
 
 # Builds with the pinned toolchain and requires the bytes to be the ones in checksums.txt. This is
@@ -374,7 +380,7 @@ check-wasm: build/parser.wasm build/signer.wasm
 check-repro: | build
 	./tools/toolchain.sh >/dev/null
 	@set -e; \
-	for m in parser signer; do \
+	for m in parser parser-no-ur signer; do \
 	  h=$$(shasum -a 256 build/$$m.wasm | cut -d' ' -f1); \
 	  grep -q "$$h" checksums.txt \
 	    || { echo "$$m.wasm is $$h, which is not in checksums.txt"; exit 1; }; \

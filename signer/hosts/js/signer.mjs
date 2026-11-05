@@ -16,7 +16,7 @@ const L = {
   },
   sig: { size: 108, input: 0, pubkey: 1, sigLen: 34, sig: 35 },
   message: { size: 1101, address: 0, textKind: 75, text: 76, textCap: 1025 },
-  multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, lock: 1132 },
+  multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, ours2: 1129, lock: 1132 },
   limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, addressMax: 75, prevtxMax: 32768 },
 };
 
@@ -38,7 +38,7 @@ const L = {
  *   signer_xpub_output: () => number,
  *   signer_desc_output: () => number,
  *   signer_address_output: () => number,
- *   signer_init: (testnet: number) => number,
+ *   signer_init: (flags: number) => number,
  *   signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number,
  *   signer_seed_from_seedqr: (qrLen: number, passLen: number) => number,
  *   signer_load_seed: () => number,
@@ -100,7 +100,7 @@ const NOT_FOUND = 12;
 export const ERRORS = {
   1: "FORMAT", 2: "NO_SEED", 3: "NOT_OURS", 4: "NOTHING_TO_SIGN", 5: "SIGHASH", 6: "SCRIPT",
   7: "PREVTX_MISSING", 8: "PREVTX_MISMATCH", 9: "FEE", 10: "NOT_REVIEWED", 11: "CRYPTO",
-  12: "NOT_FOUND", 13: "WALLET",
+  12: "NOT_FOUND", 13: "WALLET", 14: "OP_RETURN",
 };
 
 export class SignerError extends Error {
@@ -169,9 +169,10 @@ export class Signer {
     return new DataView(this.#e.memory.buffer, off, len);
   }
 
-  /** Call once, before anything else. `testnet` also covers signet. */
-  init({ testnet = false } = {}) {
-    if (!this.#e.signer_init(testnet ? 1 : 0)) throw new Error("init failed");
+  /** Call once, before anything else. `testnet` also covers signet. `strictOpReturn` refuses an OP_RETURN
+   *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
+  init({ testnet = false, strictOpReturn = false } = {}) {
+    if (!this.#e.signer_init((testnet ? 1 : 0) | (strictOpReturn ? 2 : 0))) throw new Error("init failed");
     this.#reviewed = false;
     return this;
   }
@@ -601,6 +602,8 @@ export class Signer {
       kind: kind & 1 ? "or_d" : "sortedmulti",
       threshold: v.getUint8(m.threshold),
       ours: v.getUint8(m.ours),
+      // or_d: our key on the recovery path too, which signs beside `ours`; -1 without one
+      ours2: kind & 1 && v.getUint8(m.ours2) !== 0xff ? v.getUint8(m.ours2) : -1,
       // or_d: the first `primary` keys can spend at `threshold`; the rest, once older() or after() holds, at
       // `threshold2`, as multi, or one key checked by pk or pkh
       primary: kind & 1 ? primary : n,

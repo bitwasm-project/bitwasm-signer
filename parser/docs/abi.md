@@ -33,11 +33,11 @@ before reading or writing — the module is untrusted from the host's point of v
 | `parser_plan` | `() -> i32` | Offset of the `plan_t` filled by `parser_parse` |
 | `parser_prevtx_off` | `(i: i32) -> i32` | Offset **within the input buffer** of input `i`'s `non_witness_utxo` |
 | `parser_prevtx_len` | `(i: i32) -> i32` | Its length, or `0` if the input has none |
-| `parser_sigs` | `() -> i32` | Offset of an array of 16 `plan_sig_t` the host fills in |
+| `parser_sigs` | `() -> i32` | Offset of an array of 32 `plan_sig_t` the host fills in: at most two per input, the second only for P2WSH and another key |
 | `parser_finalize` | `(n: i32) -> i32` | Insert the first `n` signatures. Returns the signed PSBT length, or `-P_ERR_SIG` |
 | `parser_output` | `() -> i32` | Offset of the signed PSBT written by `parser_finalize` |
 | `parser_nonces` | `() -> i32` | Anti-exfil: 16 x 33 bytes, per input `1` then the coordinator's `n`, for `signer_nonces` |
-| `parser_nonce_points` | `() -> i32` | Anti-exfil: 16 x 33 bytes the host fills from `signer_nonce_points`, aligned with `parser_sigs` |
+| `parser_nonce_points` | `() -> i32` | Anti-exfil: 32 x 33 bytes the host fills from `signer_nonce_points`, aligned with `parser_sigs` |
 | `parser_ur_reset` | `() -> ()` | Drop decoder state before a new animated QR |
 | `parser_ur_receive` | `(len: i32) -> i32` | Feed one UR part from the input buffer. `>0`: completed PSBT, bytes, or `crypto-output` CBOR length, now in the input buffer. `0`: more parts needed. `<0`: `UR_ERR_*` |
 | `parser_ur_progress` | `() -> i32` | Parts received so far (for a progress display only) |
@@ -158,8 +158,8 @@ Offsets are what the accessors return today. **Do not hard-code them**; call the
 |---|---:|---:|
 | input | 17,792 | 32,768 |
 | plan | 50,560 | 8,536 |
-| sigs | 59,104 | 1,728 (16 × 108) |
-| output | 61,888 | 34,816 |
+| sigs | 59,104 | 3,456 (32 × 108) |
+| output | 64,144 | 38,912 |
 
 ## `plan_t`
 
@@ -172,6 +172,7 @@ The parser's whole output. No pointers and no `long`, so wasm32, rv32 and 64-bit
 #define PLAN_MAX_OUTPUTS 16
 #define PLAN_MAX_SPK     83
 #define PLAN_MAX_DEPTH   8
+#define PLAN_MAX_SIGS    32  /* two per input: an or_d can hold two of our keys */
 #define PLAN_MAX_WSCRIPT 219 /* an or_d of two three-key multis and a timelock */
 
 typedef struct { uint8_t len; uint8_t bytes[83]; } plan_script_t;          /* 84 */
@@ -262,8 +263,12 @@ typedef struct {
 | 4 | `P_ERR_TX` | no unsigned tx, scriptSig or witness present, non-canonical serialization |
 | 5 | `P_ERR_UNSUPPORTED` | PSBT v2, script longer than 83 bytes, sighash that does not fit in a byte |
 | 6 | `P_ERR_LIMIT` | more than 16 inputs or outputs, PSBT larger than 32,768 bytes |
-| 7 | `P_ERR_UTXO` | input without utxo data, `non_witness_utxo` txid or output mismatch |
+| 7 | `P_ERR_UTXO` | input without utxo data, or a `non_witness_utxo` that does not parse |
 | 8 | `P_ERR_SIG` | invalid signatures passed to `parser_finalize` (returned negated) |
+| 9 | `P_ERR_UTXO_MISMATCH` | utxo data contradicting the input: the `non_witness_utxo`'s txid, the output it should hold, or a `witness_utxo` with another amount or script |
+
+`P_ERR_UTXO_MISMATCH` is apart from `P_ERR_UTXO` because a host may warn differently: missing data is
+a malformed PSBT, but utxo data that contradicts itself is how an input's amount is forged.
 
 The UR functions return negative values:
 
@@ -293,7 +298,7 @@ should be represented, so `plan_t` is this project's own shape. What BIP174 *doe
 > hash in the UTXO.
 
 This module does the first two: a `non_witness_utxo` whose txid or output does not match the unsigned
-transaction is rejected with `P_ERR_UTXO`, and amounts come only from the PSBT's own UTXO data.
+transaction is rejected with `P_ERR_UTXO_MISMATCH`, and amounts come only from the PSBT's own UTXO data.
 The third falls to the signer. The only `redeemScript` in scope is BIP49's P2SH-P2WPKH, and this
 module does not read it: it passes a P2SH input's derivation through, and `signer.wasm` derives the
 redeem script from its own key and refuses the input unless its hash is the UTXO's. A P2WSH input's

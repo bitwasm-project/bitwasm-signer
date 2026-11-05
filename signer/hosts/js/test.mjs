@@ -428,14 +428,19 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
      `wsh(or_d(multi(2,${K1},${K2},${K3}),and_v(v:multi(2,${R0},${K1A},${K2A}),after(1700000000))))`,
      { ours: 3, primary: 3, threshold: 2, threshold2: 2, recovery: "multi", after: 1700000000 },
      "bc1qjp5pmxw4qvf888qdf8lcda7jgcaffc82nl4035shnq6z6rmxnlmskahf27"],
+    ["own_or_d_two_keys_1in",
+     `wsh(or_d(multi(2,${K0},${K1},${K2}),and_v(v:multi(2,${R0},${K1A},${K2A}),older(4320))))`,
+     { ours: 0, ours2: 3, primary: 3, threshold: 2, threshold2: 2, recovery: "multi", older: 4320 },
+     "bc1q5n74tun3nyu0u06ededztvgn99cr5cg8g0y50zatugurgjlk8sjqngfpwe"],
   ]) {
     const l = W.multisigLoad(desc);
-    const w = { threshold: 1, threshold2: want.recovery === "multi" ? 2 : 1, older: 0, after: 0, ...want };
+    const w = { ours2: -1, threshold: 1, threshold2: want.recovery === "multi" ? 2 : 1, older: 0, after: 0, ...want };
     ok(`${name}: an or_d wallet with Core's receive address`, l.kind === "or_d" && l.receive === receive &&
-       ["ours", "primary", "threshold", "threshold2", "recovery", "older", "after"].every((f) => l[f] === w[f]));
+       ["ours", "ours2", "primary", "threshold", "threshold2", "recovery", "older", "after"].every((f) => l[f] === w[f]));
     const v = planFor(`${root}parser/build/vectors/${name}.psbt`, FP);
     const r = W.setPlan(v.plan).setPrevTxs(v.prevTxs).review();
-    ok(`${name}: its change is change, and it signs`, r.owner[1] === OWNER.CHANGE && W.sign().length === 1);
+    ok(`${name}: its change is change, and it signs with each key of ours`,
+       r.owner[1] === OWNER.CHANGE && W.sign().length === (w.ours2 < 0 ? 1 : 2));
   }
   ok("a sortedmulti wallet says so", W.multisigLoad(`wsh(sortedmulti(2,${K0},${K1},${K2}))`).kind === "sortedmulti");
   W.multisigUnload();
@@ -506,6 +511,8 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("a fresh review", E.signer_message_review(m.length, 84, 0, 0, 0), 0);
   E.signer_init(1);
   check("is forgotten by init", E.signer_message_sign(), 10);
+  check("init takes the strict OP_RETURN flag", E.signer_init(2), 1);
+  check("init refuses flags it does not know", E.signer_init(4), 0);
   E.signer_init(0);
   mem().set(m, E.signer_input());
   E.signer_message_review(m.length, 84, 0, 0, 0);

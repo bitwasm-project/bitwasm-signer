@@ -178,7 +178,7 @@ static void test_review_and_sign(void) {
     core_prevtx_t prev[PLAN_MAX_INPUTS] = {{0}};
     uint8_t raw0[256], raw1[256], digest[32];
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     unsigned int n;
     plan_t p, q;
 
@@ -292,6 +292,36 @@ static void test_review_and_sign(void) {
     base_plan(&p);
     p.outputs[0].amount = 2000000;
     CHECK(core_review(&p, NULL, &r) == CORE_ERR_FEE, "outputs exceed inputs");
+
+    /* An OP_RETURN not made of complete pushes: shown as hex unless the host asked for it to be refused */
+    {
+        static const uint8_t ok[][8] = {{1, 0x6a},
+                                        {7, 0x6a, 4, 'd', 'a', 't', 'a', 0x51},
+                                        {6, 0x6a, 0x4d, 2, 0, 'h', 'i'},
+                                        {4, 0x6a, 0x00, 0x4f, 0x60}};
+        static const uint8_t bad[][8] = {{4, 0x6a, 0x10, 'a', 'b'},
+                                         {2, 0x6a, 0xac},
+                                         {3, 0x6a, 0x4d, 1},
+                                         {6, 0x6a, 0x4e, 0xff, 0xff, 0xff, 0xff},
+                                         {4, 0x6a, 1, 'a', 0x61}};
+        core_set_options(CORE_OPT_STRICT_OP_RETURN);
+        for (unsigned int i = 0; i < sizeof(ok) / sizeof(ok[0]); i++) {
+            base_plan(&p);
+            p.outputs[0].amount = 0, p.outputs[1].amount = 99000;
+            set_spk(&p.outputs[0].spk, ok[i] + 1, ok[i][0]);
+            CHECK(core_review(&p, NULL, &r) == CORE_OK, "strict: complete pushes pass");
+        }
+        for (unsigned int i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+            base_plan(&p);
+            p.outputs[0].amount = 0, p.outputs[1].amount = 99000;
+            set_spk(&p.outputs[0].spk, bad[i] + 1, bad[i][0]);
+            CHECK(core_review(&p, NULL, &r) == CORE_ERR_OP_RETURN, "strict: incomplete push refused");
+            core_set_options(0);
+            CHECK(core_review(&p, NULL, &r) == CORE_OK, "lenient: shown instead");
+            core_set_options(CORE_OPT_STRICT_OP_RETURN);
+        }
+        core_set_options(0);
+    }
 
     /* two inputs including SegWit v0: refused without the previous transaction, and refused if an
      * amount disagrees with it */
@@ -421,7 +451,7 @@ static void test_anti_exfil(void) {
     static const uint8_t zero[33] = {0};
     uint8_t n0[32], n1[32], digest[32], x[32], compact[64], first[73], q0[33];
     core_review_t r;
-    core_sig_t sigs[PLAN_MAX_INPUTS];
+    core_sig_t sigs[PLAN_MAX_SIGS];
     secp256k1_ecdsa_signature sig;
     unsigned int n;
     plan_t p;

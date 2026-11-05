@@ -41,7 +41,7 @@ private enum L {
 
 private let coreErr = [
     "OK", "FORMAT", "NO_SEED", "NOT_OURS", "NOTHING_TO_SIGN", "SIGHASH", "SCRIPT",
-    "PREVTX_MISSING", "PREVTX_MISMATCH", "FEE", "NOT_REVIEWED", "CRYPTO", "NOT_FOUND", "WALLET",
+    "PREVTX_MISSING", "PREVTX_MISMATCH", "FEE", "NOT_REVIEWED", "CRYPTO", "NOT_FOUND", "WALLET", "OP_RETURN",
 ]
 
 public enum SignerError: Error, CustomStringConvertible {
@@ -211,10 +211,11 @@ public final class Signer {
         String(format: "%08x", UInt32(bitPattern: (try? call("signer_fingerprint")) ?? 0))
     }
 
-    /// Call once, before anything else. `testnet` covers signet too.
+    /// Call once, before anything else. `testnet` covers signet too. `strictOpReturn` refuses an OP_RETURN
+    /// output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it.
     @discardableResult
-    public func initialise(testnet: Bool = false) throws -> Signer {
-        guard try call("signer_init", [.i32(testnet ? 1 : 0)]) == 1 else {
+    public func initialise(testnet: Bool = false, strictOpReturn: Bool = false) throws -> Signer {
+        guard try call("signer_init", [.i32((testnet ? 1 : 0) | (strictOpReturn ? 2 : 0))]) == 1 else {
             throw SignerError.unexpectedModule("init failed")
         }
         reviewed = false

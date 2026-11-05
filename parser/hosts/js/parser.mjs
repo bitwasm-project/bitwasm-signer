@@ -65,7 +65,7 @@ const L = {
   script: { len: 0, bytes: 1 },
 };
 
-const P_ERR = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG"];
+const P_ERR = ["OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG", "UTXO_MISMATCH"];
 const UR_ERR = ["", "SCHEME", "BYTEWORDS", "PART", "MISMATCH", "LIMIT", "MESSAGE", "TYPE"];
 
 export class ParserError extends Error {
@@ -360,7 +360,7 @@ export class Parser {
    * @param {{input: number, pubkey: Uint8Array, sig: Uint8Array, point?: Uint8Array | null}[]} sigs
    */
   finalize(sigs) {
-    if (sigs.length > 16) throw new RangeError(`${sigs.length} signatures, a plan has at most 16 inputs`);
+    if (sigs.length > 32) throw new RangeError(`${sigs.length} signatures, at most 32: two for each of 16 inputs`);
     for (const s of sigs) {
       if (!(s.input >= 0 && s.input < 16) || s.pubkey.length !== 33 || s.sig.length > 73) {
         throw new RangeError(`input ${s.input}: a signature slot takes a 33-byte pubkey and at most 73 bytes of signature`);
@@ -370,8 +370,8 @@ export class Parser {
     this.#refresh();
     const base = this.exports.parser_sigs();
     const points = this.exports.parser_nonce_points();
-    this.mem.fill(0, this.#check(base, 108 * 16), base + 108 * 16);
-    this.mem.fill(0, this.#check(points, 33 * 16), points + 33 * 16);
+    this.mem.fill(0, this.#check(base, 108 * 32), base + 108 * 32);
+    this.mem.fill(0, this.#check(points, 33 * 32), points + 33 * 32);
     sigs.forEach((s, i) => {
       const o = base + i * 108;
       if (s.point) this.mem.set(s.point, points + i * 33);

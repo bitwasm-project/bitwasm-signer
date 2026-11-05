@@ -69,11 +69,13 @@ jobs:
       # The release is built from these same pins, so this says the hashes are still the ones we publish
       - name: Still the bytes we released
         run: |
-          sha256sum build/parser.wasm build/signer.wasm
+          sha256sum build/parser.wasm build/parser-no-ur.wasm build/signer.wasm
           grep "$(sha256sum build/parser.wasm | cut -d' ' -f1)" checksums.txt \
             || { echo "parser.wasm changed; update checksums.txt deliberately"; exit 1; }
           grep "$(sha256sum build/signer.wasm | cut -d' ' -f1)" checksums.txt \
             || { echo "signer.wasm changed; update checksums.txt deliberately"; exit 1; }
+          grep "$(sha256sum build/parser-no-ur.wasm | cut -d' ' -f1)" checksums.txt \
+            || { echo "parser-no-ur.wasm changed; update checksums.txt deliberately"; exit 1; }
 
       - name: Is what we ship the right shape (no imports, fixed memory, no mutable global exported)
         run: make check-wasm

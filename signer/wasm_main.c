@@ -34,9 +34,9 @@ static core_prevtx_t prevtx[PLAN_MAX_INPUTS];
 static core_review_t review;
 static core_facts_t facts;
 static core_display_t display;
-static core_sig_t sigs[PLAN_MAX_INPUTS];
+static core_sig_t sigs[PLAN_MAX_SIGS];
 /* Anti-exfil, per input: 1 then the coordinator's n, as parser_nonces() lays it out; and Q for each of sigs[] */
-static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_INPUTS][33];
+static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_SIGS][33];
 /* a mnemonic or SeedQR || passphrase, a seed, entropy or dice, a multisig setup; always wiped after */
 static uint8_t in[1024];
 static char xpub[CORE_XPUB_MAX], desc[CORE_DESC_MAX];
@@ -117,9 +117,12 @@ const char *EXPORT(signer_wordlist)(void) {
     return bip39_wordlist();
 }
 
-int EXPORT(signer_init)(int testnet) {
+/* flags: bit 0 testnet, the rest core_set_options' shifted up one (bit 1 CORE_OPT_STRICT_OP_RETURN) */
+int EXPORT(signer_init)(int flags) {
     memset(prevtx, 0, sizeof(prevtx));
-    return core_init(testnet ? CORE_TESTNET : CORE_MAINNET);
+    if (flags & ~3 || !core_init(flags & 1 ? CORE_TESTNET : CORE_MAINNET)) return 0;
+    core_set_options((unsigned int)flags >> 1);
+    return 1;
 }
 
 /* Build the key from the mnemonic and passphrase written to in. PBKDF2 2048 rounds takes about half
@@ -214,7 +217,7 @@ int EXPORT(signer_sign)(void) {
         if (nonces[i][0] == 1) core_set_host_nonce(i, nonces[i] + 1);
     memset(nonces, 0, sizeof(nonces));
     rc = core_sign(&plan, 0, sigs, &n);
-    for (unsigned int k = 0; k < PLAN_MAX_INPUTS; k++) memcpy(points[k], core_nonce_point(k), 33);
+    for (unsigned int k = 0; k < PLAN_MAX_SIGS; k++) memcpy(points[k], core_nonce_point(k), 33);
     return rc ? -rc : (int)n;
 }
 

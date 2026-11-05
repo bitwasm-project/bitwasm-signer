@@ -25,10 +25,10 @@ private object L {
     const val IN_AMOUNT = 40; const val IN_SPK = 48; const val IN_KEY = 132; const val IN_SIGHASH = 172
     const val OUT_AMOUNT = 0; const val OUT_SPK = 8; const val OUT_KEY = 92
     const val KEY_DEPTH = 0; const val KEY_FINGERPRINT = 4; const val KEY_PATH = 8
-    const val SIG_SIZE = 108; const val MAX_INPUTS = 16
+    const val SIG_SIZE = 108; const val MAX_INPUTS = 16; const val MAX_SIGS = 32
 }
 
-private val P_ERR = arrayOf("OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG")
+private val P_ERR = arrayOf("OK", "MAGIC", "FORMAT", "DUPLICATE", "TX", "UNSUPPORTED", "LIMIT", "UTXO", "SIG", "UTXO_MISMATCH")
 private val UR_ERR = arrayOf("", "SCHEME", "BYTEWORDS", "PART", "MISMATCH", "LIMIT", "MESSAGE", "TYPE")
 
 class ParserException(val code: Int, kind: String = "P_ERR") : Exception(
@@ -242,14 +242,14 @@ class Parser(parserWasm: ByteArray, sha256: String? = null) {
 
     /** Insert signatures and return the signed PSBT. */
     fun finalize(sigs: List<Signature>): ByteArray {
-        require(sigs.size <= L.MAX_INPUTS) { "${sigs.size} signatures, a plan has at most ${L.MAX_INPUTS} inputs" }
+        require(sigs.size <= L.MAX_SIGS) { "${sigs.size} signatures, at most ${L.MAX_SIGS}: two for each input" }
         for (s in sigs) {
             require(s.input in 0 until L.MAX_INPUTS && s.pubkey.size == 33 && s.sig.size <= 73) {
                 "input ${s.input}: a signature slot takes a 33-byte pubkey and at most 73 bytes of signature"
             }
         }
         val base = call("parser_sigs")
-        memory.write(base, ByteArray(L.SIG_SIZE * L.MAX_INPUTS))
+        memory.write(base, ByteArray(L.SIG_SIZE * L.MAX_SIGS))
         sigs.forEachIndexed { i, s ->
             val o = base + i * L.SIG_SIZE
             memory.write(o, byteArrayOf(s.input.toByte()))

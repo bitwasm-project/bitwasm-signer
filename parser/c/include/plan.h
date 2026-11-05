@@ -13,6 +13,8 @@
 #define PLAN_MAX_OUTPUTS 16
 #define PLAN_MAX_SPK 83 /* standard OP_RETURN limit; P2TR / P2WSH are 34 */
 #define PLAN_MAX_DEPTH 8
+/* two per input at most: an or_d wallet can hold two of our keys, one on each path */
+#define PLAN_MAX_SIGS (2 * PLAN_MAX_INPUTS)
 /* or_d of two three-key multis: 2 x (OP_m, 3 x (push + 33), OP_n, CHECKMULTISIG), IFDUP NOTIF, a 5-byte timelock,
  * CSV ENDIF */
 #define PLAN_MAX_WSCRIPT 219

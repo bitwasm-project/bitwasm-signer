@@ -103,7 +103,8 @@ for (const [chain, internal] of [[0, false], [1, true]]) {
   imports.push({ desc: `${desc}#${ck}`, timestamp: "now", active: true, internal, range: [0, 20] });
 }
 // or_d, as parser/tools/gen_vectors.py builds it: {0} ours, on chains 2 and 3 when it is on the recovery path, and
-// the cosigners at 0 and 1: the two above, "letter advice ... above", then the first two at account 1
+// the cosigners at 0 and 1: the two above, "letter advice ... above", then the first two at account 1; {6} ours again
+// on 2 and 3
 const ours = `[${FINGERPRINT}/48h/0h/0h/2h]${MULTISIG.tprv}`;
 const OR_D_COSIGNERS = [...MULTISIG.cosigners,
   "[28645006/48h/0h/0h/2h]tpubDE9rhca81b8zga4T9czxb4wjy1ZjbXtPnto2orq74XiVkLAtDDDTQrFppdVcVk7WHz8PmTsdLAjEeQTLsBBLWscv1cdYHCtXUe3FjRgWdjS",
@@ -116,9 +117,11 @@ for (const [policy, recovery] of [
   ["or_d(pk({1}),and_v(v:pk({0}),after(1000000)))", true],
   ["or_d(multi(2,{0},{1},{2}),and_v(v:pkh({3}),after(900000)))", false],
   ["or_d(multi(2,{1},{2},{3}),and_v(v:multi(2,{0},{4},{5}),after(1700000000)))", true],
+  ["or_d(multi(2,{0},{1},{2}),and_v(v:multi(2,{6},{4},{5}),older(4320)))", false],
 ]) {
   for (const step of [0, 1]) {
-    const keys = [`${ours}/${step + (recovery ? 2 : 0)}/*`, ...OR_D_COSIGNERS.map((k) => `${k}/${step}/*`)];
+    const keys = [`${ours}/${step + (recovery ? 2 : 0)}/*`, ...OR_D_COSIGNERS.map((k) => `${k}/${step}/*`),
+                  `${ours}/${step + 2}/*`];
     const desc = `wsh(${policy.replace(/\{(\d)\}/g, (_, i) => keys[i])})`;
     const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
     imports.push({ desc: `${desc}#${ck}`, timestamp: "now", range: [0, 20] });
@@ -358,7 +361,11 @@ for (const path of psbtPaths.sort()) {
   if (name.startsWith("own_")) {
     const S = await Signer.load(signerWasm, pin);
     try {
-      S.init().seedFromMnemonic(new TextEncoder().encode(MNEMONIC)).setPlan(ours.plan).setPrevTxs(ours.prevTxs);
+      S.init().seedFromMnemonic(new TextEncoder().encode(MNEMONIC));
+      // a wallet with our key on both paths signs with both only once it is registered
+      const { wallet: registered } = JSON.parse(readFileSync(path.replace(/\.psbt$/, ".json"), "utf8"));
+      if (registered) S.multisigLoad(registered);
+      S.setPlan(ours.plan).setPrevTxs(ours.prevTxs);
       const r = S.review();
       if ("fee" in core) eq("fee", r.fee, sats(core.fee));
       const oursSigs = {};
@@ -373,6 +380,7 @@ for (const path of psbtPaths.sort()) {
         wallet("walletprocesspsbt", b64, "true", "DEFAULT", "true", "false")).psbt);
       const common = Object.keys(oursSigs).filter((k) => k in coreSigs);
       eq("signatures Core also made", common.length, Object.keys(oursSigs).length);
+      if (registered) eq("signatures, one for each key of ours", Object.keys(oursSigs).length, Object.keys(coreSigs).length);
       for (const k of common) eq(k, oursSigs[k], coreSigs[k]);
       sigNote = common.length ? `, ${common.length} signature(s) byte-identical` : "";
     } catch (e) {
