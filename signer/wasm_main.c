@@ -309,6 +309,17 @@ int EXPORT(signer_multisig_load_cbor)(unsigned int len) {
     wipe(in, sizeof(in));
     return rc;
 }
+int EXPORT(signer_multisig_address)(unsigned int chain, unsigned int index) {
+    return core_multisig_address(chain, index, address);
+}
+
+/* in holds the address, cleared after as every use of in is */
+int EXPORT(signer_multisig_find_address)(unsigned int len, unsigned int count) {
+    int rc = len <= sizeof(in) ? core_multisig_find_address((const char *)in, len, count) : -CORE_ERR_FORMAT;
+    wipe(in, sizeof(in));
+    return rc;
+}
+
 void EXPORT(signer_multisig_unload)(void) {
     core_multisig_unload();
     wipe(&multisig, sizeof(multisig));

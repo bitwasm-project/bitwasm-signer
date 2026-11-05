@@ -153,6 +153,11 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out);
 /* Registers BCR-2020-010 crypto-output CBOR after converting its BIP48 multipath keys for the same checks */
 int core_multisig_load_cbor(const uint8_t *cbor, size_t len, core_multisig_t *out);
 void core_multisig_unload(void);
+/* The registered wallet's address at chain (0 receive, 1 change) and index, below 100000; WALLET without one */
+int core_multisig_address(uint32_t chain, uint32_t index, char out[ADDRESS_MAX]);
+/* Where a P2WSH address is in the registered wallet, receive then change, indices 0 to count-1: chain << 20 | index,
+ * or the negated error, NOT_FOUND when it is not there */
+int core_multisig_find_address(const char *addr, size_t len, uint32_t count);
 
 /* CBOR for a crypto-account UR (the account's single-sig keys and its BIP48 key) and a crypto-output UR (the
  * registered wallet). The length written, or -CORE_ERR_* */

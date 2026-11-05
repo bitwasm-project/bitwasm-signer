@@ -471,6 +471,25 @@ class Signer(signerWasm: ByteArray, sha256: String) {
 
     fun multisigUnload() { call("signer_multisig_unload") }
 
+    /** The registered multisig's address at chain 0 (receive) or 1 (change) and index below 100000 */
+    fun multisigAddress(chain: Int = 0, index: Int = 0): String {
+        val rc = call("signer_multisig_address", chain.toLong(), index.toLong())
+        if (rc != 0) throw SignerException("multisigAddress", rc)
+        return cstr(call("signer_address_output"), L.ADDRESS_MAX)
+    }
+
+    /** Where an address is in the registered multisig, receive then change, indices 0 to count-1, or null */
+    fun multisigFindAddress(address: String, count: Int = 1000): AddressPath? {
+        val bytes = address.trim().replace(Regex("^bitcoin:", RegexOption.IGNORE_CASE), "")
+            .substringBefore('?').toByteArray()
+        require(bytes.size <= inputCapacity) { "${bytes.size} bytes of address does not fit in $inputCapacity" }
+        memory.write(call("signer_input"), bytes)
+        val rc = call("signer_multisig_find_address", bytes.size.toLong(), count.toLong())
+        if (rc >= 0) return AddressPath(rc shr 20, rc and 0xfffff)
+        if (rc != -CORE_ERR.indexOf("NOT_FOUND")) throw SignerException("multisigFindAddress", -rc)
+        return null
+    }
+
     /** CBOR for a crypto-account UR: the account's sh(wpkh()), wpkh(), tr() and BIP48 keys. */
     fun accountCbor(account: Int = 0): ByteArray = cbor("accountCbor", call("signer_account_cbor", account.toLong()))
 

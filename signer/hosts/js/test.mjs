@@ -385,6 +385,12 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("the CBOR of the wallet", Buffer.from(W.multisigCbor()).toString("hex"), "d90191d90197a201020283d9012fa5035821021a3bf5fbf737d0f36993fd46dc4913093beb532d654fe0dfd98bd27585dc9f29045820bba0c7ca160a870efeb940ab90d0f4284fea1b5e0d2117677e823fc37e2d576306d90130a301881830f500f500f502f5021a73c5da0a030407d90130a101838400f401f480f4081a1cf29716d9012fa5035821030e435aae36818255097925c6d2cedae9867961a5ddcc2e80bd6a0d00687286c304582038d3b00251a463b0ffe9b595d21752664c5a231c89fc2fb4f695ab90cdcd77dd06d90130a301881830f500f500f502f5021a3f635a63030407d90130a101838400f401f480f4081aee71f8c5d9012fa50358210339710356a496726c84692621b2b6e3645dd35bc0026c587f16411897990a1e1f045820a732876f758546f2e3aa40a0ba12c5ea24ee18f9086e854e573bea1e219d172f06d90130a301881830f500f500f502f5021ab8688df1030407d90130a101838400f401f480f4081affd9c519");
   const restored = W.multisigLoadCbor(W.multisigCbor());
   ok("crypto-output imports into the same multisig", restored.receive === ms.receive && restored.descriptor === ms.descriptor);
+  ok("multisigAddress gives receive 0 as load does", W.multisigAddress() === ms.receive);
+  const change0 = "bc1qc6p3lpt2e2wv0vukgyykx3ca8fhy6pvlfg7sgv8e3qej473jjmxs29860y";
+  ok("and change 0 as Core does", W.multisigAddress({ chain: 1, index: 0 }) === change0);
+  const found = W.multisigFindAddress(`bitcoin:${W.multisigAddress({ chain: 1, index: 4 }).toUpperCase()}?amount=1`);
+  ok("multisigFindAddress finds change 4 from an upper-case BIP21 URI", found?.chain === 1 && found?.index === 4);
+  ok("and not beyond count", W.multisigFindAddress(W.multisigAddress({ chain: 1, index: 4 }), { count: 4 }) === null);
   for (const name of ["own_p2wsh_2of3_1in", "own_p2wsh_2of3_cosigned"]) {
     const v = planFor(`${root}parser/build/vectors/${name}.psbt`, FP);
     const r = W.setPlan(v.plan).setPrevTxs(v.prevTxs).review();

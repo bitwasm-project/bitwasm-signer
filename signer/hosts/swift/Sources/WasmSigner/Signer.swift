@@ -533,6 +533,27 @@ public final class Signer {
 
     public func multisigUnload() throws { _ = try call("signer_multisig_unload") }
 
+    /// The registered multisig's address at chain 0 (receive) or 1 (change) and index below 100000
+    public func multisigAddress(chain: UInt32 = 0, index: UInt32 = 0) throws -> String {
+        let rc = try call("signer_multisig_address", [.i32(chain), .i32(index)])
+        guard rc == 0 else { throw SignerError.refused(stage: "multisigAddress", code: rc) }
+        return try cstr(Int(try call("signer_address_output")), L.addressMax)
+    }
+
+    /// Where an address is in the registered multisig, receive then change, indices 0 to count-1, or nil
+    public func multisigFindAddress(_ address: String, count: UInt32 = 1000) throws -> AddressPath? {
+        var a = Substring(address.trimmingCharacters(in: .whitespacesAndNewlines))
+        if a.lowercased().hasPrefix("bitcoin:") { a = a.dropFirst(8) }
+        let bytes = [UInt8](a.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)[0].utf8)
+        let cap = inputCapacity
+        guard bytes.count <= cap else { throw SignerError.tooLarge(size: bytes.count, capacity: cap) }
+        try write(bytes, at: Int(try call("signer_input")))
+        let rc = try call("signer_multisig_find_address", [.i32(UInt32(bytes.count)), .i32(count)])
+        if rc >= 0 { return AddressPath(chain: Int(rc >> 20), index: Int(rc & 0xfffff)) }
+        if rc != -Int32(coreErr.firstIndex(of: "NOT_FOUND")!) { throw SignerError.refused(stage: "multisigFindAddress", code: -rc) }
+        return nil
+    }
+
     /// CBOR for a crypto-account UR: the account's sh(wpkh()), wpkh(), tr() and BIP48 keys.
     public func accountCbor(account: UInt32 = 0) throws -> [UInt8] {
         try cbor("accountCbor", try call("signer_account_cbor", [.i32(account)]))
