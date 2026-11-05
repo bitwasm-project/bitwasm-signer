@@ -37,7 +37,7 @@ const L = {
  *   signer_nonce_points: () => number,
  *   signer_xpub_output: () => number,
  *   signer_desc_output: () => number,
- *   signer_init: (testnet: number) => number,
+ *   signer_init: (flags: number) => number,
  *   signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number,
  *   signer_seed_from_seedqr: (qrLen: number, passLen: number) => number,
  *   signer_load_seed: () => number,
@@ -98,7 +98,7 @@ const NOT_FOUND = 12;
 export const ERRORS = {
   1: "FORMAT", 2: "NO_SEED", 3: "NOT_OURS", 4: "NOTHING_TO_SIGN", 5: "SIGHASH", 6: "SCRIPT",
   7: "PREVTX_MISSING", 8: "PREVTX_MISMATCH", 9: "FEE", 10: "NOT_REVIEWED", 11: "CRYPTO",
-  12: "NOT_FOUND", 13: "WALLET",
+  12: "NOT_FOUND", 13: "WALLET", 14: "OP_RETURN",
 };
 
 export class SignerError extends Error {
@@ -167,9 +167,10 @@ export class Signer {
     return new DataView(this.#e.memory.buffer, off, len);
   }
 
-  /** Call once, before anything else. `testnet` also covers signet. */
-  init({ testnet = false } = {}) {
-    if (!this.#e.signer_init(testnet ? 1 : 0)) throw new Error("init failed");
+  /** Call once, before anything else. `testnet` also covers signet. `strictOpReturn` refuses an OP_RETURN
+   *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
+  init({ testnet = false, strictOpReturn = false } = {}) {
+    if (!this.#e.signer_init((testnet ? 1 : 0) | (strictOpReturn ? 2 : 0))) throw new Error("init failed");
     this.#reviewed = false;
     return this;
   }

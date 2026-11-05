@@ -113,9 +113,12 @@ const char *EXPORT(signer_wordlist)(void) {
     return bip39_wordlist();
 }
 
-int EXPORT(signer_init)(int testnet) {
+/* flags: bit 0 testnet, the rest core_set_options' shifted up one (bit 1 CORE_OPT_STRICT_OP_RETURN) */
+int EXPORT(signer_init)(int flags) {
     memset(prevtx, 0, sizeof(prevtx));
-    return core_init(testnet ? CORE_TESTNET : CORE_MAINNET);
+    if (flags & ~3 || !core_init(flags & 1 ? CORE_TESTNET : CORE_MAINNET)) return 0;
+    core_set_options((unsigned int)flags >> 1);
+    return 1;
 }
 
 /* Build the key from the mnemonic and passphrase written to in. PBKDF2 2048 rounds takes about half

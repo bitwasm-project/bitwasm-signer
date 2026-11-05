@@ -44,7 +44,7 @@ private object L {
 
 private val CORE_ERR = arrayOf(
     "OK", "FORMAT", "NO_SEED", "NOT_OURS", "NOTHING_TO_SIGN", "SIGHASH", "SCRIPT",
-    "PREVTX_MISSING", "PREVTX_MISMATCH", "FEE", "NOT_REVIEWED", "CRYPTO", "NOT_FOUND", "WALLET",
+    "PREVTX_MISSING", "PREVTX_MISMATCH", "FEE", "NOT_REVIEWED", "CRYPTO", "NOT_FOUND", "WALLET", "OP_RETURN",
 )
 
 class SignerException(val stage: String, val code: Int) : Exception(
@@ -131,9 +131,11 @@ class Signer(signerWasm: ByteArray, sha256: String) {
     /** The master fingerprint, or "00000000" when no key is loaded. */
     val fingerprint: String get() = "%08x".format(call("signer_fingerprint"))
 
-    /** Call once, before anything else. `testnet` covers signet too. */
-    fun init(testnet: Boolean = false): Signer {
-        require(call("signer_init", if (testnet) 1L else 0L) == 1) { "init failed" }
+    /** Call once, before anything else. `testnet` covers signet too. `strictOpReturn` refuses an OP_RETURN
+     *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
+    fun init(testnet: Boolean = false, strictOpReturn: Boolean = false): Signer {
+        val flags = (if (testnet) 1L else 0L) or (if (strictOpReturn) 2L else 0L)
+        require(call("signer_init", flags) == 1) { "init failed" }
         reviewed = false
         return this
     }

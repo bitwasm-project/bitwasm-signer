@@ -41,7 +41,7 @@ way it is not for `parser.wasm`.
 ## The sequence
 
 ```
-signer_init(testnet)
+signer_init(flags)
 signer_seed_from_mnemonic(...)   or   signer_seed_from_seedqr(...)   or   signer_load_seed()
 signer_plan()        <- write the 8536-byte plan_t here
 signer_set_prevtx(i, off, len)   for each input, after writing into signer_prevtx()
@@ -87,7 +87,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 
 | | returns |
 |---|---|
-| `signer_init(testnet: i32)` | 1 on success. `testnet` covers signet too |
+| `signer_init(flags: i32)` | 1 on success. Bit 0: testnet, which covers signet too. Bit 1: refuse an OP_RETURN output not made of complete pushes (`OP_RETURN`); without it such an output is shown as hex. Other bits must be 0 |
 | `signer_seed_from_mnemonic(mn_len, pass_len)` | 1 on success. English BIP39 words with a valid checksum; surrounding and repeated whitespace and capitals are normalised first, the passphrase is used as given. PBKDF2 2048 rounds, about half a second |
 | `signer_seed_from_seedqr(qr_len, pass_len)` | 1 on success. Standard (48 or 96 digits) or Compact (16 or 32 bytes); 0 if the BIP39 checksum fails |
 | `signer_load_seed()` | 1 on success, using the first 64 bytes of the input buffer |
@@ -215,6 +215,7 @@ be the bytes Core gives for the same key. P2TR has no BIP137 form; BIP322 is not
 | 11 | `CRYPTO` | a libsecp256k1 call failed, or the signature did not verify |
 | 12 | `NOT_FOUND` | `signer_find_address`: none of the addresses searched is this one |
 | 13 | `WALLET` | a multisig without our key, or whose BSMS address disagrees; a P2WSH input not of the registered one |
+| 14 | `OP_RETURN` | with `signer_init`'s bit 1: an OP_RETURN output with a push past its end or an opcode above `OP_16`, which Bitcoin Core will not relay |
 
 ## Structures
 
