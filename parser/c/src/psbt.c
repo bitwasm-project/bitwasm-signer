@@ -293,7 +293,8 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
         in->amount = amount;
         memset(&in->spk, 0, sizeof(in->spk));
         set_script(&in->spk, spk, len);
-        if (nwu && (prev.amount != in->amount || memcmp(&prev.spk, &in->spk, sizeof(in->spk)))) return P_ERR_UTXO_MISMATCH;
+        if (nwu && (prev.amount != in->amount || memcmp(&prev.spk, &in->spk, sizeof(in->spk))))
+            return P_ERR_UTXO_MISMATCH;
     }
     if (!wu && !nwu) return P_ERR_UTXO;
     if (sighash != 0xffffffffu && sighash > 0xff) return P_ERR_UNSUPPORTED;
