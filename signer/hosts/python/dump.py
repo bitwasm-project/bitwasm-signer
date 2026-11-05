@@ -71,6 +71,7 @@ else:
     sys.exit("an unloaded wallet still had crypto-output CBOR")
 chain, index = S.find_address("bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7", count=20)
 print(f"found {chain} {index}")
+print(f"address {S.address(purpose=49, account=2, chain=1, index=7)}")
 print(f"desc {S.xpub(purpose=86, account=1)['descriptor']}")
 print(f"dice {S.mnemonic_from_dice(bytearray(b'3' * 99)).decode()}")
 print(f"seedqr {S.seedqr_from_mnemonic(bytearray(MNEMONIC.encode())).decode()}")

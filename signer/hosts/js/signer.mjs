@@ -17,7 +17,7 @@ const L = {
   sig: { size: 108, input: 0, pubkey: 1, sigLen: 34, sig: 35 },
   message: { size: 1101, address: 0, textKind: 75, text: 76, textCap: 1025 },
   multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, ours2: 1129, lock: 1132 },
-  limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, prevtxMax: 32768 },
+  limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, addressMax: 75, prevtxMax: 32768 },
 };
 
 /**
@@ -37,6 +37,7 @@ const L = {
  *   signer_nonce_points: () => number,
  *   signer_xpub_output: () => number,
  *   signer_desc_output: () => number,
+ *   signer_address_output: () => number,
  *   signer_init: (flags: number) => number,
  *   signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number,
  *   signer_seed_from_seedqr: (qrLen: number, passLen: number) => number,
@@ -50,6 +51,7 @@ const L = {
  *   signer_sign: () => number,
  *   signer_xpub: (purpose: number, account: number) => number,
  *   signer_find_address: (len: number, account: number, count: number) => number,
+ *   signer_address: (purpose: number, account: number, chain: number, index: number) => number,
  *   signer_mnemonic_output: () => number,
  *   signer_mnemonic_from_entropy: (len: number) => number,
  *   signer_mnemonic_from_dice: (len: number, words: number) => number,
@@ -491,6 +493,21 @@ export class Signer {
     if (rc >= 0) return { chain: rc >> 20, index: rc & 0xfffff };
     if (rc !== -NOT_FOUND) throw new SignerError("findAddress", -rc);
     return null;
+  }
+
+  /** The address at m/purpose'/coin'/account'/chain/index, purpose 49, 84 or 86, chain 0 (receive) or 1
+   *  (change) and index below 100000, so a host can list them. findAddress() goes the other way. */
+  /** @param {{ purpose?: 49 | 84 | 86, account?: number, chain?: number, index?: number }} [opts] */
+  address({ purpose = 84, account = 0, chain = 0, index = 0 } = {}) {
+    for (const v of [purpose, account, chain, index]) {
+      if (!Number.isInteger(v) || v < 0 || v >= 2 ** 32) throw new RangeError(`${v} has to be an integer in range`);
+    }
+    const rc = this.#e.signer_address(purpose, account, chain, index);
+    if (rc !== 0) throw new SignerError("address", rc);
+    const at = this.#e.signer_address_output();
+    const raw = this.#mem.subarray(at, at + L.limits.addressMax);
+    const nul = raw.indexOf(0);
+    return new TextDecoder().decode(raw.subarray(0, nul < 0 ? raw.length : nul));
   }
 
   /** What to show before signing a message with BIP137: the address of m/purpose'/coin'/account'/chain/index

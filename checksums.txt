@@ -1,3 +1,3 @@
 d9318981f96de22a8d8976c6e0e1a6fa488bd94b00067b562b481892c2fbbdc7  build/parser.wasm
 a5a9d986f413a07c2f2f2c57b5151da0dfdddb09afbce64d45babb60170d080a  build/parser-no-ur.wasm
-933b3d1ed2e864e232006caa5bf6a61e5c8a457c507d11b6d4bfb18d9d62594a  build/signer.wasm
+e136e2d7b57990c862fc06530e53f024f4291b6e3dd68322341ad3a1924a64b0  build/signer.wasm

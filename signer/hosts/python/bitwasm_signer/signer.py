@@ -39,6 +39,7 @@ MAX_INPUTS = 16
 MAX_OUTPUTS = 16
 XPUB_MAX = 120
 DESC_MAX = 180
+ADDRESS_MAX = 75
 PREVTX_MAX = 32768
 NONCE_SIZE = 33
 CBOR_MAX = 1024
@@ -287,6 +288,15 @@ class Signer:
         if rc != -NOT_FOUND:
             raise SignerError("find_address", -rc)
         return None
+
+    def address(self, purpose=84, account=0, chain=0, index=0) -> str:
+        """The address at m/purpose'/coin'/account'/chain/index: purpose 49, 84 or 86, chain 0 or 1, index below 100000."""
+        if not all(0 <= v < 2**32 for v in (purpose, account, chain, index)):
+            raise ValueError(f"purpose {purpose}, account {account}, chain {chain} and index {index} out of range")
+        rc = self._e.signer_address(purpose, account, chain, index)
+        if rc != 0:
+            raise SignerError("address", rc)
+        return self._cstr(self._e.signer_address_output(), ADDRESS_MAX)
 
     def message_review(self, message: bytes, purpose=84, account=0, chain=0, index=0):
         self._input(message)

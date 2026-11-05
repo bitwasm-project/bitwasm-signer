@@ -87,6 +87,7 @@ if dumpOnly {
     for sig in try s.sign() { print("sig \(sig.input) \(hex(sig.sig))") }
     let found = try s.findAddress("bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7", count: 20)!
     print("found \(found.chain) \(found.index)")
+    print("address \(try s.address(purpose: 49, account: 2, chain: 1, index: 7))")
     print("desc \(try s.xpub(purpose: 86, account: 1).descriptor)")
     var rolls = [UInt8](String(repeating: "3", count: 99).utf8)
     print("dice \(String(decoding: try s.mnemonicFromDice(&rolls), as: UTF8.self))")

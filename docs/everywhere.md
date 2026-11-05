@@ -15,7 +15,7 @@ whose behaviour could differ with where the module was put.
 | | imports | what it does |
 |---|---:|---|
 | `parser.wasm` | 0 | UR reassembly, PSBT parsing, building the plan, taking signatures back, UR encoding |
-| `signer.wasm` | 0 | BIP39 seed, new mnemonics, SeedQR, BIP85 children, BIP32 derivation, re-checking a plan, ECDSA and Schnorr signing, BIP137 messages, xpub export, finding our addresses |
+| `signer.wasm` | 0 | BIP39 seed, new mnemonics, SeedQR, BIP85 children, BIP32 derivation, re-checking a plan, ECDSA and Schnorr signing, BIP137 messages, xpub export, finding and listing our addresses |
 
 <img src="everywhere.svg" alt="The same bytes run everywhere" width="940">
 
