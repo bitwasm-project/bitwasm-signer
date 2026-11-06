@@ -569,7 +569,7 @@ export class Signer {
     };
   }
 
-  /** Registers a P2WSH sortedmulti wallet of at most three keys, from a descriptor, a BSMS 1.0 record or a
+  /** Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
    *  Coldcard setup file, or a Liana, Nunchuk or Keeper or_d wallet from its descriptor. Show what this returns, the receive address
    *  above all, before trusting it: from then on the wallet's inputs are signed only when they are the
    *  wallet's, and its outputs at our paths are change. Loading another seed unloads it. */
@@ -579,7 +579,7 @@ export class Signer {
     return this.#multisigLoad(bytes, "multisigLoad");
   }
 
-  /** Registers a BIP48 sortedmulti wallet from its typed crypto-output CBOR. */
+  /** Registers a BIP48 sortedmulti or multi wallet from its typed crypto-output CBOR. */
   /** @param {Uint8Array} cbor */
   multisigLoadCbor(cbor) {
     return this.#multisigLoad(cbor, "multisigLoadCbor");
@@ -611,7 +611,7 @@ export class Signer {
     const n = v.getUint8(m.n);
     const kind = v.getUint8(m.kind), lock = v.getUint32(m.lock, true), primary = v.getUint8(m.primary);
     return {
-      kind: kind & 1 ? "or_d" : "sortedmulti",
+      kind: kind & 1 ? "or_d" : kind & 8 ? "multi" : "sortedmulti",
       threshold: v.getUint8(m.threshold),
       ours: v.getUint8(m.ours),
       // or_d: our key on the recovery path too, which signs beside `ours`; -1 without one

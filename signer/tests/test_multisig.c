@@ -1,4 +1,4 @@
-/* Registering a P2WSH sortedmulti wallet: the three formats it comes in, what makes one refused, and the
+/* Registering a P2WSH sortedmulti or multi wallet: the three formats it comes in, what makes one refused, and the
  * descriptor and addresses it gives back, against Bitcoin Core's getdescriptorinfo and deriveaddresses */
 #include <stdio.h>
 #include <string.h>
@@ -37,6 +37,41 @@ static int checks, failures;
 #define RECEIVE0 "bc1qea2gkgeszr7wm66x2ejkgdxm9nhg9462sszn75zmkhazev0t02vs70kkll"
 #define UPPER0 "BC1QEA2GKGESZR7WM66X2EJKGDXM9NHG9462SSZN75ZMKHAZEV0T02VS70KKLL"
 #define CHANGE0 "bc1qc6p3lpt2e2wv0vukgyykx3ca8fhy6pvlfg7sgv8e3qej473jjmxs29860y"
+
+/* all x12 and abandon x23 art, at m/48'/0'/0'/2': with them six keys, the most the plan's witness script holds.
+ * Checksums and addresses from Core; witness scripts hash to its addresses */
+#define K4                                                                                                             \
+    "[5c9e228d/48h/0h/0h/2h]"                                                                                          \
+    "xpub6EgGHjcvovyN3nK921zAGPfuB41cJXkYRdt3tLGmiMyvbgHpss4X1eRZwShbEBb1znz2e2bCkCED87QZpin3sSYKbmCzQ9Sc7LaV98ngdeX"
+#define K5                                                                                                             \
+    "[5436d724/48h/0h/0h/2h]"                                                                                          \
+    "xpub6E79FaRWLSJCAgA2jDHRvyrWKwT6aSmR685zptzyYPvmUd44omcxZ1NAzDtbdFBvEADjcVbV4NzTDwQeU6oiSV9KGiMSWhjANZjbfUHkm3Y"
+#define SORTED6                                                                                                        \
+    "wsh(sortedmulti(3," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*," K4 "/<0;1>/*," K5 "/<0;1>/*))"
+#define SORTED6_SUM "zdum4404"
+#define SORTED6_RECEIVE0 "bc1qg6qmu2dvyjsjjtvvl8r9els29qkaw2mxt2ewymmxtvqe3s5mmlmqm7aary"
+#define SORTED6_RECEIVE0_WS                                                                                            \
+    "53210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815958a8121028e818df63d6f2dce9308d7455fd4c85cbb39d7" \
+    "03608b8fbed647d75e262322d82103229cb34fe3eb1af43b6dd2a2e1b31681039b71d9303ded36b3128ef359e379bd21032c612ce1300e68" \
+    "92508903ff7141a9c608a18ac95423239f33c57b5b6e143ad42103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626" \
+    "c514e02103f9c2483ba111f98f01a51e748c75b3ab37429288c31526ee15453482631aed2156ae"
+#define SORTED6_RECEIVE0_SPK "00204681be29ac24a1292d8cf9c65cfe0a282dd72b665ab2e26f665b0198c29bdff6"
+#define SORTED6_CHANGE0 "bc1q4wr6hnpa2v9zjjgajdxemk0dm4m5reuszdgayza8pxuuvr655v9swch45e"
+#define SORTED6_CHANGE0_SPK "0020ab87abcc3d530a29491d934d9dd9eddd7741e7901351d20ba709b9c60f54a30b"
+#define MULTI3 "wsh(multi(2," K1 "/<0;1>/*," K0 "/<0;1>/*," K2 "/<0;1>/*))"
+#define MULTI3_SUM "m7ne0ae8"
+#define MULTI3_RECEIVE0 "bc1qp40943ackp4r0rlux4nunfgxrlg8rmp97gae53svywxut7thskwskjycjv"
+#define MULTI3_CHANGE0 "bc1qxljh3pklsjrxfmm3rlkvn0t97x8mckmaztrp769jwhl5s4s76qsqlvj6uj"
+#define MULTI6 "wsh(multi(4," K5 "/<0;1>/*," K4 "/<0;1>/*," K3 "/<0;1>/*," K2 "/<0;1>/*," K1 "/<0;1>/*," K0 "/<0;1>/*))"
+#define MULTI6_SUM "qealnls8"
+#define MULTI6_RECEIVE0 "bc1qvtwe0kpccz8dqjfxhj6xkrgch9en8lvwsld24m5wg344ln74p88ssppvty"
+#define MULTI6_RECEIVE0_WS                                                                                             \
+    "5421032c612ce1300e6892508903ff7141a9c608a18ac95423239f33c57b5b6e143ad42103f9c2483ba111f98f01a51e748c75b3ab374292" \
+    "88c31526ee15453482631aed212103229cb34fe3eb1af43b6dd2a2e1b31681039b71d9303ded36b3128ef359e379bd21028e818df63d6f2d" \
+    "ce9308d7455fd4c85cbb39d703608b8fbed647d75e262322d8210254689c4a585b8f3d9ddea8e9e68d0e8f49f75709fa6e7d075657573815" \
+    "958a812103dc1953c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e056ae"
+#define MULTI6_RECEIVE0_SPK "002062dd97d838c08ed04926bcb46b0d18b97333fd8e87daaaee8e446b5fcfd509cf"
+#define MULTI6_CHANGE0_SPK "0020be3c4e715015c8810d307b553bd5bd6a3fb3ab766ae0b36a768ff885f0497831"
 
 /* Liana: ours primary with a year's recovery; ours the recovery on <2;3>, as Liana numbers a key's second use; and
  * a timelock short enough to be OP_16. Checksums, addresses and scripts from Core's getdescriptorinfo,
@@ -330,8 +365,60 @@ static void or_d_multi(void) {
                   CORE_OK &&
               ms.n == 3 && ms.primary == 2,
           "a 2-of-2 with one recovery key");
-    CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*))") == CORE_ERR_FORMAT,
-          "sortedmulti stays at three keys");
+}
+
+/* Up to six keys, sorted or in multi()'s order, as upstream SeedSigner takes them */
+static void wide(void) {
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_SIGS];
+    unsigned int n_sigs;
+    plan_t p;
+    uint8_t cbor[1024];
+    char addr[ADDRESS_MAX], canonical[CORE_MULTISIG_DESC_MAX];
+    int n;
+
+    CHECK(load(SORTED6) == CORE_OK && ms.kind == CORE_WALLET_SORTEDMULTI && ms.n == 6 && ms.threshold == 3 &&
+              ms.ours == 0 && ms.fingerprints[5] == 0x5436d724 && !strcmp(ms.receive, SORTED6_RECEIVE0) &&
+              !strcmp(ms.descriptor, SORTED6 "#" SORTED6_SUM),
+          "a 3-of-6 sortedmulti: %s", ms.receive);
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, SORTED6_CHANGE0), "its change 0: %s", addr);
+    p = liana_plan(SORTED6_RECEIVE0_WS, SORTED6_RECEIVE0_SPK, 0, SORTED6_CHANGE0_SPK, 1);
+    CHECK(p.wscripts[0].len == 207 && core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 &&
+              r.owner[1] == CORE_OUT_CHANGE,
+          "an input of it signed, its change recognised");
+    CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 2 + 4 * 34, 33),
+          "the signature is by our key, fifth once sorted");
+
+    CHECK(load(MULTI3) == CORE_OK && ms.kind == CORE_WALLET_MULTI && ms.ours == 1 &&
+              !strcmp(ms.receive, MULTI3_RECEIVE0) && !strcmp(ms.descriptor, MULTI3 "#" MULTI3_SUM),
+          "multi() keeps its keys' order: %s", ms.receive);
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, MULTI3_CHANGE0), "its change 0: %s", addr);
+    strcpy(canonical, ms.descriptor);
+    CHECK(load(canonical) == CORE_OK && !strcmp(ms.descriptor, canonical), "its own multi() descriptor reads back");
+    n = core_multisig_cbor(cbor, sizeof(cbor));
+    CHECK(n > 5 && cbor[3] == 0xd9 && cbor[4] == 0x01 && cbor[5] == 0x96, "crypto-output with multi (406)");
+    CHECK(core_multisig_load_cbor(cbor, (size_t)n, &ms) == CORE_OK && ms.kind == CORE_WALLET_MULTI &&
+              !strcmp(ms.descriptor, MULTI3 "#" MULTI3_SUM),
+          "which registers the same multi() wallet");
+
+    CHECK(load(MULTI6) == CORE_OK && ms.n == 6 && ms.ours == 5 && !strcmp(ms.receive, MULTI6_RECEIVE0) &&
+              !strcmp(ms.descriptor, MULTI6 "#" MULTI6_SUM),
+          "a 4-of-6 multi(), ours last: %s", ms.receive);
+    p = liana_plan(MULTI6_RECEIVE0_WS, MULTI6_RECEIVE0_SPK, 0, MULTI6_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE &&
+              core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 2 + 5 * 34, 33),
+          "an input of it signed by our key, last as written");
+    p = liana_plan(SORTED6_RECEIVE0_WS, SORTED6_RECEIVE0_SPK, 0, SORTED6_CHANGE0_SPK, 1);
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_WALLET, "the same keys sorted are not this wallet's input");
+    core_multisig_unload();
+
+    CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*," K4 "/<0;1>/*," K5
+               "/<0;1>/*," K1A "/<0;1>/*))") == CORE_ERR_FORMAT,
+          "seven keys");
+    CHECK(load("wsh(multi(3," K0 "/<0;1>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT, "multi() above its keys");
+    CHECK(load("wsh(multi(2," K0 "/<2;3>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT, "multi() keeps receive 0, change 1");
 }
 
 static void or_d_two_keys(void) {
@@ -464,9 +551,6 @@ int main(void) {
     CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K0 "/<0;1>/*))") == CORE_ERR_FORMAT, "a key twice");
     CHECK(load("wsh(sortedmulti(4," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*))") == CORE_ERR_FORMAT,
           "a threshold above the keys");
-    CHECK(load("wsh(sortedmulti(1," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*))") == CORE_ERR_FORMAT,
-          "four keys");
-    CHECK(load("wsh(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT, "multi() rather than sortedmulti()");
     CHECK(load("sh(wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*)))") == CORE_ERR_FORMAT, "P2SH-P2WSH");
     CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/2/*))") == CORE_ERR_FORMAT, "a child other than 0 or 1");
     CHECK(load("wsh(sortedmulti(2,[73c5da0a/48h/0h/0h/2]" XPUB0 "/<0;1>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT,
@@ -504,6 +588,7 @@ int main(void) {
     or_d_variants();
     or_d_multi();
     or_d_two_keys();
+    wide();
 
     core_unload();
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "unloading the seed unloads the wallet");

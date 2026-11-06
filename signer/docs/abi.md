@@ -153,12 +153,13 @@ interpreter, on an M-series Mac. Chicory and WasmKit are slower still, so their 
 
 ## Registering a multisig
 
-Without a registered wallet, a P2WSH input is signed when its witness script is a multisig of at most three
+Without a registered wallet, a P2WSH input is signed when its witness script is a multisig of at most six
 keys that hashes to its script and holds our key, and P2WSH change is shown as an external output: the signer
 cannot tell the cosigners' keys from anyone else's. `signer_multisig_load` gives it those keys. It takes a
-`signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` descriptor (with `/<0;1>/*`, `/**` or `/0/*` after
-each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
-`signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shape.
+`signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` or `wsh(multi(k,...))` descriptor of up to six keys
+(with `/<0;1>/*`, `/**` or `/0/*` after each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
+`signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shapes
+(`sortedmulti` 407 or `multi` 406).
 `signer_multisig_load` also takes `wsh(or_d(X,and_v(v:Y,older(n))))` and the same with `after(n)`: X is
 `pk(KEY)` or `multi(m,KEY,...)` of two or three keys, Y the same or `pkh(KEY)`. That is Liana's
 `or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),...))`, Nunchuk's templates and Keeper's Emergency Key. `n` runs from 1 to
@@ -182,7 +183,7 @@ is the wallet's at that path (`WALLET` otherwise), and a P2WSH output at our key
 the wallet's keys there hash to it and one of its inputs is being signed. Loading another seed unloads the wallet.
 
 `signer_multisig_cbor()` and `signer_account_cbor()` describe public keys as BCR-2020-010 and -015 do, for
-`parser_ur_encode_cbor()`: the wallet as `wsh(sortedmulti())`, and the account's `sh(wpkh())`, `wpkh()`, `tr()`
+`parser_ur_encode_cbor()`: the wallet as `wsh(sortedmulti())` or `wsh(multi())`, and the account's `sh(wpkh())`, `wpkh()`, `tr()`
 and BIP48 key as `wsh(cosigner())`, each key a crypto-hdkey with its origin and parent fingerprint. An `or_d`
 wallet has no crypto-output tag, so `signer_multisig_cbor()` returns `-FORMAT` for it.
 
@@ -212,7 +213,7 @@ be the bytes Core gives for the same key. P2TR has no BIP137 form; BIP322 is not
 | 3 | `NOT_OURS` | an input claims our fingerprint, but its key does not produce its script |
 | 4 | `NOTHING_TO_SIGN` | no input in the plan is ours |
 | 5 | `SIGHASH` | a sighash type this signer does not allow |
-| 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most three keys |
+| 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most six keys |
 | 7 | `PREVTX_MISSING` | two or more inputs including SegWit v0, and no previous transaction |
 | 8 | `PREVTX_MISMATCH` | the previous transaction disagrees with the claimed amount, txid or vout |
 | 9 | `FEE` | the fee does not add up, or overflows |
@@ -287,7 +288,7 @@ original PSBT and leaves every other byte alone.
 | 0 | 1 | `threshold`, for `or_d` the primary path's |
 | 1 | 1 | `n`, how many keys |
 | 2 | 1 | `ours`, which of them; for `or_d` the primary path's keys come first |
-| 3 | 1 | `kind`: 0 `sortedmulti`, or 1 `or_d` with 2 set for a single recovery key's `v:pk` and 4 for `after()` |
+| 3 | 1 | `kind`: 0 `sortedmulti`, 8 `multi`, or 1 `or_d` with 2 set for a single recovery key's `v:pk` and 4 for `after()` |
 | 4 | 6 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
 | 28 | 75 | `receive`, the first receive address, NUL-terminated |
 | 103 | 1024 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
@@ -326,7 +327,7 @@ is still deterministic.
 
 ## What this module does not do
 
-P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most three keys
+P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most six keys
 (BIP48), `SIGHASH_ALL` and Taproot's `SIGHASH_DEFAULT`. P2WSH change is shown as change only for a registered multisig
 wallet; without one it is shown as an external output and counted in `spend`. No taproot multisig, no script trees,
 no legacy P2PKH

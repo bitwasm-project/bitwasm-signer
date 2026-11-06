@@ -442,7 +442,7 @@ class Signer(signerWasm: ByteArray, sha256: String) {
     }
 
     /**
-     * Registers a P2WSH sortedmulti wallet of at most three keys, from a descriptor, a BSMS 1.0 record or a
+     * Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
      * Coldcard setup file. Show what this returns, the receive address above all, before trusting it. Loading
      * another seed unloads it.
      */

@@ -285,7 +285,7 @@ export class Signer {
         xpub: string;
         descriptor: string;
     };
-    /** Registers a P2WSH sortedmulti wallet of at most three keys, from a descriptor, a BSMS 1.0 record or a
+    /** Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
      *  Coldcard setup file, or a Liana, Nunchuk or Keeper or_d wallet from its descriptor. Show what this returns, the receive address
      *  above all, before trusting it: from then on the wallet's inputs are signed only when they are the
      *  wallet's, and its outputs at our paths are change. Loading another seed unloads it. */
@@ -304,7 +304,7 @@ export class Signer {
         receive: string;
         descriptor: string;
     };
-    /** Registers a BIP48 sortedmulti wallet from its typed crypto-output CBOR. */
+    /** Registers a BIP48 sortedmulti or multi wallet from its typed crypto-output CBOR. */
     /** @param {Uint8Array} cbor */
     multisigLoadCbor(cbor: Uint8Array): {
         kind: string;

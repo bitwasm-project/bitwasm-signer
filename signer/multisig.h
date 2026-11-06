@@ -1,7 +1,7 @@
 #ifndef CORE_MULTISIG_H
 #define CORE_MULTISIG_H
 
-/* A P2WSH sortedmulti wallet of at most three keys, read from a coordinator's descriptor, BSMS record or
+/* A P2WSH sortedmulti or multi wallet of at most six keys, read from a coordinator's descriptor, BSMS record or
  * Coldcard-style setup file, or a primary path with a timelocked recovery path as Liana, Nunchuk and Keeper write
  * them. Only public keys: core.c decides which of them is ours */
 
@@ -10,8 +10,8 @@
 #include "plan.h"
 #include "address.h"
 
-#define MS_MAX_SORTED 3 /* sortedmulti, and each side of an or_d */
-#define MS_MAX_KEYS (2 * MS_MAX_SORTED)
+#define MS_MAX_SIDE 3                     /* each side of an or_d */
+#define MS_MAX_KEYS (2 * MS_MAX_SIDE)     /* six keys of 34 bytes fit PLAN_MAX_WSCRIPT */
 #define MS_MAX_DEPTH (PLAN_MAX_DEPTH - 2) /* the origin path, leaving room for chain and index */
 #define MS_DESC_MAX 1024
 
@@ -25,7 +25,7 @@ typedef struct {
 
 /* OR_D is wsh(or_d(X,and_v(v:Y,older(lock)))), X keys[0, primary) as pk() or multi(threshold,...), Y the rest as
  * multi(threshold2,...) or one key's v:pkh(), v:pk() with the PK flag; AFTER swaps in after(lock) */
-enum { MS_SORTEDMULTI = 0, MS_OR_D = 1, MS_OR_D_PK = 2, MS_OR_D_AFTER = 4 };
+enum { MS_SORTEDMULTI = 0, MS_OR_D = 1, MS_OR_D_PK = 2, MS_OR_D_AFTER = 4, MS_MULTI = 8 };
 
 typedef struct {
     uint8_t kind, threshold, n, primary, threshold2;
@@ -37,7 +37,8 @@ typedef struct {
 int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char address[ADDRESS_MAX]);
 /* Accepts BCR-2020-010 crypto-output CBOR for the firmware's BIP48 multipath sortedmulti wallets */
 int ms_cbor_descriptor(const uint8_t *cbor, size_t len, int testnet, char out[MS_DESC_MAX]);
-/* The witness script at chain (0 receive, 1 change) and index, keys sorted as sortedmulti() sorts them */
+/* The witness script at chain (0 receive, 1 change) and index, keys sorted as sortedmulti() sorts them or in
+ * multi()'s order */
 int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscript_t *out);
 /* n as the script pushes it, a minimal script number: OP_1..OP_16, or 1 to 4 bytes. Returns its length */
 size_t ms_scriptnum(uint32_t n, uint8_t out[5]);
