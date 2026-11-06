@@ -88,7 +88,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 
 | | returns |
 |---|---|
-| `signer_init(flags: i32)` | 1 on success. Bit 0: testnet, which covers signet too. Bit 1: refuse an OP_RETURN output not made of complete pushes (`OP_RETURN`); without it such an output is shown as hex. Other bits must be 0 |
+| `signer_init(flags: i32)` | 1 on success. Bit 0: testnet, which covers signet too. Bit 1: refuse an OP_RETURN output not made of complete pushes (`OP_RETURN`); without it such an output is shown as hex. Bit 2: sign SegWit v0 inputs without their previous transactions (no `PREVTX_MISSING`), their amounts then taken on the PSBT's word; one given is still checked. Other bits must be 0 |
 | `signer_seed_from_mnemonic(mn_len, pass_len)` | 1 on success. English BIP39 words with a valid checksum; surrounding and repeated whitespace and capitals are normalised first, the passphrase is used as given. PBKDF2 2048 rounds, about half a second |
 | `signer_seed_from_seedqr(qr_len, pass_len)` | 1 on success. Standard (48 or 96 digits) or Compact (16 or 32 bytes); 0 if the BIP39 checksum fails |
 | `signer_load_seed()` | 1 on success, using the first 64 bytes of the input buffer |
@@ -214,7 +214,7 @@ be the bytes Core gives for the same key. P2TR has no BIP137 form; BIP322 is not
 | 4 | `NOTHING_TO_SIGN` | no input in the plan is ours |
 | 5 | `SIGHASH` | a sighash type this signer does not allow |
 | 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most six keys |
-| 7 | `PREVTX_MISSING` | two or more inputs including SegWit v0, and no previous transaction |
+| 7 | `PREVTX_MISSING` | two or more inputs including SegWit v0, and no previous transaction, without `signer_init`'s bit 2 |
 | 8 | `PREVTX_MISMATCH` | the previous transaction disagrees with the claimed amount, txid or vout |
 | 9 | `FEE` | the fee does not add up, or overflows |
 | 10 | `NOT_REVIEWED` | the plan is not the one review passed, or the approval was already used |

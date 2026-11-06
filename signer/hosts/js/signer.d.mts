@@ -115,10 +115,12 @@ export class Signer {
     /** @param {WebAssembly.Instance} instance */
     constructor(instance: WebAssembly.Instance);
     /** Call once, before anything else. `testnet` also covers signet. `strictOpReturn` refuses an OP_RETURN
-     *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
-    init({ testnet, strictOpReturn }?: {
+     *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. `prevtxOptional` signs
+     *  SegWit v0 inputs without their non_witness_utxo, taking their amounts on the PSBT's word. */
+    init({ testnet, strictOpReturn, prevtxOptional }?: {
         testnet?: boolean | undefined;
         strictOpReturn?: boolean | undefined;
+        prevtxOptional?: boolean | undefined;
     }): this;
     /** Derives the key from a BIP39 mnemonic. PBKDF2 2048 rounds, about half a second.
      *  Takes NFKD-normalised UTF-8 bytes, not strings, because a string cannot be cleared; both arrays

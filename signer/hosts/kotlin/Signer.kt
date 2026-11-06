@@ -132,9 +132,10 @@ class Signer(signerWasm: ByteArray, sha256: String) {
     val fingerprint: String get() = "%08x".format(call("signer_fingerprint"))
 
     /** Call once, before anything else. `testnet` covers signet too. `strictOpReturn` refuses an OP_RETURN
-     *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
-    fun init(testnet: Boolean = false, strictOpReturn: Boolean = false): Signer {
-        val flags = (if (testnet) 1L else 0L) or (if (strictOpReturn) 2L else 0L)
+     *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. `prevtxOptional` signs
+     *  SegWit v0 inputs without their non_witness_utxo, taking their amounts on the PSBT's word. */
+    fun init(testnet: Boolean = false, strictOpReturn: Boolean = false, prevtxOptional: Boolean = false): Signer {
+        val flags = (if (testnet) 1L else 0L) or (if (strictOpReturn) 2L else 0L) or (if (prevtxOptional) 4L else 0L)
         require(call("signer_init", flags) == 1) { "init failed" }
         reviewed = false
         return this

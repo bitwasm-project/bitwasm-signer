@@ -173,9 +173,11 @@ export class Signer {
   }
 
   /** Call once, before anything else. `testnet` also covers signet. `strictOpReturn` refuses an OP_RETURN
-   *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. */
-  init({ testnet = false, strictOpReturn = false } = {}) {
-    if (!this.#e.signer_init((testnet ? 1 : 0) | (strictOpReturn ? 2 : 0))) throw new Error("init failed");
+   *  output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. `prevtxOptional` signs
+   *  SegWit v0 inputs without their non_witness_utxo, taking their amounts on the PSBT's word. */
+  init({ testnet = false, strictOpReturn = false, prevtxOptional = false } = {}) {
+    const flags = (testnet ? 1 : 0) | (strictOpReturn ? 2 : 0) | (prevtxOptional ? 4 : 0);
+    if (!this.#e.signer_init(flags)) throw new Error("init failed");
     this.#reviewed = false;
     return this;
   }

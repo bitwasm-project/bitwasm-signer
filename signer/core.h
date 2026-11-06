@@ -18,7 +18,7 @@ enum {
     CORE_ERR_NOTHING_TO_SIGN,
     CORE_ERR_SIGHASH,        /* a sighash type we do not allow */
     CORE_ERR_SCRIPT,         /* an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, a P2WSH multisig or Liana's */
-    CORE_ERR_PREVTX_MISSING, /* two or more inputs including SegWit v0, and no non_witness_utxo */
+    CORE_ERR_PREVTX_MISSING, /* two or more inputs including SegWit v0, no non_witness_utxo, no PREVTX_OPTIONAL */
     CORE_ERR_PREVTX_MISMATCH,
     CORE_ERR_FEE,
     CORE_ERR_NOT_REVIEWED,
@@ -29,8 +29,10 @@ enum {
 };
 
 /* Options core_set_options takes; core_init clears them. STRICT_OP_RETURN refuses what Bitcoin Core will not
- * relay (a push past the end, an opcode that pushes nothing), as SeedSigner does; off, it is shown as hex */
-enum { CORE_OPT_STRICT_OP_RETURN = 1 };
+ * relay (a push past the end, an opcode that pushes nothing), as SeedSigner does; off, it is shown as hex.
+ * PREVTX_OPTIONAL signs SegWit v0 inputs without their previous transactions, as SeedSigner and Bitcoin Core do:
+ * their amounts are then the PSBT's word, which a host that cannot get the transactions accepts */
+enum { CORE_OPT_STRICT_OP_RETURN = 1, CORE_OPT_PREVTX_OPTIONAL = 2 };
 
 typedef enum { CORE_MAINNET = 0, CORE_TESTNET = 1 } core_network_t;
 

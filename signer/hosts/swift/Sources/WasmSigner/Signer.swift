@@ -212,10 +212,13 @@ public final class Signer {
     }
 
     /// Call once, before anything else. `testnet` covers signet too. `strictOpReturn` refuses an OP_RETURN
-    /// output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it.
+    /// output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. `prevtxOptional` signs
+    /// SegWit v0 inputs without their non_witness_utxo, taking their amounts on the PSBT's word.
     @discardableResult
-    public func initialise(testnet: Bool = false, strictOpReturn: Bool = false) throws -> Signer {
-        guard try call("signer_init", [.i32((testnet ? 1 : 0) | (strictOpReturn ? 2 : 0))]) == 1 else {
+    public func initialise(testnet: Bool = false, strictOpReturn: Bool = false,
+                           prevtxOptional: Bool = false) throws -> Signer {
+        let flags: UInt32 = (testnet ? 1 : 0) | (strictOpReturn ? 2 : 0) | (prevtxOptional ? 4 : 0)
+        guard try call("signer_init", [.i32(flags)]) == 1 else {
             throw SignerError.unexpectedModule("init failed")
         }
         reviewed = false
