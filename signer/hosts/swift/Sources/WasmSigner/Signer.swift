@@ -28,8 +28,8 @@ private enum L {
     static let sigSize = 108
     static let sigInput = 0, sigPubkey = 1, sigLen = 34, sigSig = 35
 
-    static let msgSize = 1101
-    static let msgAddress = 0, msgTextKind = 75, msgText = 76, msgTextCap = 1025
+    static let msgSize = 2125
+    static let msgAddress = 0, msgTextKind = 75, msgText = 76, msgTextCap = 2049
 
     static let msSize = 1136
     static let msThreshold = 0, msN = 1, msOurs = 2, msFingerprints = 4

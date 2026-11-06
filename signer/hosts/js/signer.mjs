@@ -15,7 +15,7 @@ const L = {
     outSize: 184, outAmount: 0, outOwner: 8, outTextKind: 9, outText: 10, outTextCap: 167,
   },
   sig: { size: 108, input: 0, pubkey: 1, sigLen: 34, sig: 35 },
-  message: { size: 1101, address: 0, textKind: 75, text: 76, textCap: 1025 },
+  message: { size: 2125, address: 0, textKind: 75, text: 76, textCap: 2049 },
   multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, ours2: 1129, lock: 1132 },
   limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, addressMax: 75, prevtxMax: 32768 },
 };

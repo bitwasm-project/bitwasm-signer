@@ -31,8 +31,8 @@ private object L {
     const val SIG_SIZE = 108
     const val SIG_INPUT = 0; const val SIG_PUBKEY = 1; const val SIG_LEN = 34; const val SIG_SIG = 35
 
-    const val MSG_SIZE = 1101
-    const val MSG_ADDRESS = 0; const val MSG_TEXT_KIND = 75; const val MSG_TEXT = 76; const val MSG_TEXT_CAP = 1025
+    const val MSG_SIZE = 2125
+    const val MSG_ADDRESS = 0; const val MSG_TEXT_KIND = 75; const val MSG_TEXT = 76; const val MSG_TEXT_CAP = 2049
 
     const val MS_SIZE = 1136
     const val MS_THRESHOLD = 0; const val MS_N = 1; const val MS_OURS = 2; const val MS_FINGERPRINTS = 4
