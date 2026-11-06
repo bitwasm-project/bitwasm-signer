@@ -35,6 +35,8 @@ static int checks, failures;
 /* Core's getdescriptorinfo checksum, and its deriveaddresses for receive index 0 */
 #define CHECKSUM "d9p6ar8k"
 #define RECEIVE0 "bc1qea2gkgeszr7wm66x2ejkgdxm9nhg9462sszn75zmkhazev0t02vs70kkll"
+#define UPPER0 "BC1QEA2GKGESZR7WM66X2EJKGDXM9NHG9462SSZN75ZMKHAZEV0T02VS70KKLL"
+#define CHANGE0 "bc1qc6p3lpt2e2wv0vukgyykx3ca8fhy6pvlfg7sgv8e3qej473jjmxs29860y"
 
 /* Liana: ours primary with a year's recovery; ours the recovery on <2;3>, as Liana numbers a key's second use; and
  * a timelock short enough to be OP_16. Checksums, addresses and scripts from Core's getdescriptorinfo,
@@ -382,13 +384,15 @@ int main(void) {
     uint8_t seed[64], cbor[1024], mainnet_cbor[1024];
     static const char mn[] =
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-    char canonical[CORE_MULTISIG_DESC_MAX];
+    char canonical[CORE_MULTISIG_DESC_MAX], addr[ADDRESS_MAX];
     int n, mainnet_cbor_len = 0;
 
     pbkdf2_hmac_sha512((const uint8_t *)mn, sizeof(mn) - 1, (const uint8_t *)"mnemonic", 8, 2048, seed);
     CHECK(core_init(CORE_MAINNET) && core_load_seed(seed), "load mainnet");
 
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "no wallet, no crypto-output");
+    CHECK(core_multisig_address(0, 0, addr) == CORE_ERR_WALLET && !addr[0], "no wallet, no address");
+    CHECK(core_multisig_find_address(RECEIVE0, strlen(RECEIVE0), 10) == -CORE_ERR_WALLET, "no wallet, nothing found");
     CHECK(load(DESC) == CORE_OK, "a descriptor");
     CHECK(ms.threshold == 2 && ms.n == 3 && ms.ours == 0, "2 of 3, ours first");
     {
@@ -398,6 +402,23 @@ int main(void) {
     CHECK(ms.fingerprints[1] == 0x3f635a63 && ms.fingerprints[2] == 0xb8688df1, "the cosigners' fingerprints");
     CHECK(!strcmp(ms.receive, RECEIVE0), "the first receive address is Core's: %s", ms.receive);
     CHECK(!strcmp(ms.descriptor, DESC "#" CHECKSUM), "the descriptor with Core's checksum: %s", ms.descriptor);
+    CHECK(core_multisig_address(0, 0, addr) == CORE_OK && !strcmp(addr, RECEIVE0), "receive 0 is load's: %s", addr);
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, CHANGE0), "change 0 is Core's: %s", addr);
+    CHECK(core_multisig_address(2, 0, addr) == CORE_ERR_FORMAT &&
+              core_multisig_address(0, 100000, addr) == CORE_ERR_FORMAT,
+          "chain 2 and index 100000 refused");
+    CHECK(core_multisig_find_address(RECEIVE0, strlen(RECEIVE0), 10) == 0, "receive 0 found");
+    CHECK(core_multisig_find_address(CHANGE0, strlen(CHANGE0), 10) == 1 << 20, "change 0 found");
+    CHECK(core_multisig_address(1, 7, addr) == CORE_OK &&
+              core_multisig_find_address(addr, strlen(addr), 10) == (1 << 20 | 7),
+          "change 7 found");
+    CHECK(core_multisig_find_address(addr, strlen(addr), 7) == -CORE_ERR_NOT_FOUND, "beyond count, not found");
+    CHECK(core_multisig_find_address(UPPER0, strlen(UPPER0), 1) == 0, "upper case, as a QR carries it");
+    CHECK(core_multisig_find_address("bc1qEA2GKGESZR7WM66X2EJKGDXM9NHG9462SSZN75ZMKHAZEV0T02VS70KKLL", 62, 1) ==
+              -CORE_ERR_FORMAT,
+          "mixed case refused");
+    CHECK(core_multisig_find_address(LIANA1_RECEIVE0, strlen(LIANA1_RECEIVE0), 10) == -CORE_ERR_NOT_FOUND,
+          "another wallet's address, not found");
     strcpy(canonical, ms.descriptor);
     CHECK(load(canonical) == CORE_OK && !strcmp(ms.descriptor, canonical), "its own descriptor reads back");
     canonical[strlen(canonical) - 1] ^= 1;

@@ -961,6 +961,45 @@ done:
     return rc;
 }
 
+int core_multisig_address(uint32_t chain, uint32_t index, char out[ADDRESS_MAX]) {
+    uint8_t spk[34] = {0x00, 32};
+    plan_wscript_t ws;
+
+    out[0] = 0;
+    if (wallet_ours < 0) return CORE_ERR_WALLET;
+    if (chain > 1 || index >= MAX_ADDRESS_INDEX) return CORE_ERR_FORMAT;
+    if (!ms_wscript(&wallet, chain, index, &ws)) return CORE_ERR_CRYPTO;
+    sha256(ws.bytes, ws.len, spk + 2);
+    return address_encode(spk, sizeof(spk), network == CORE_TESTNET, out) ? CORE_OK : CORE_ERR_CRYPTO;
+}
+
+int core_multisig_find_address(const char *addr, size_t len, uint32_t count) {
+    char want[ADDRESS_MAX], got[ADDRESS_MAX];
+    int upper = 0, lower = 0, other = 0, rc = -CORE_ERR_NOT_FOUND;
+
+    if (wallet_ours < 0) return -CORE_ERR_WALLET;
+    if (len < 4 || len >= ADDRESS_MAX || !count || count > MAX_ADDRESS_INDEX) return -CORE_ERR_FORMAT;
+    for (size_t i = 0; i < len;
+         i++) { /* BIP173: all upper case, as a QR's alphanumeric mode carries it, or all lower */
+        char c = addr[i];
+        upper |= c >= 'A' && c <= 'Z';
+        lower |= c >= 'a' && c <= 'z';
+        other |= !(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z');
+        want[i] = c >= 'A' && c <= 'Z' ? (char)(c + 32) : c;
+    }
+    want[len] = 0;
+    if (other || (upper && lower)) return -CORE_ERR_FORMAT;
+    if (len != 62 || memcmp(want, network == CORE_TESTNET ? "tb1q" : "bc1q", 4)) return -CORE_ERR_NOT_FOUND;
+    for (uint32_t c = 0; rc == -CORE_ERR_NOT_FOUND && c < 2; c++) {
+        for (uint32_t i = 0; rc == -CORE_ERR_NOT_FOUND && i < count; i++) {
+            int r = core_multisig_address(c, i, got);
+            if (r) rc = -r;
+            else if (!strcmp(got, want)) rc = (int)(c << 20 | i);
+        }
+    }
+    return rc;
+}
+
 int core_multisig_load_cbor(const uint8_t *cbor, size_t len, core_multisig_t *out) {
     char descriptor[MS_DESC_MAX];
     core_multisig_unload();

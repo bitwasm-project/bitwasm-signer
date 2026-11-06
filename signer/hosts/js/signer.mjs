@@ -67,6 +67,8 @@ const L = {
  *   signer_multisig_load: (len: number) => number,
  *   signer_multisig_load_cbor: (len: number) => number,
  *   signer_multisig_unload: () => void,
+ *   signer_multisig_address: (chain: number, index: number) => number,
+ *   signer_multisig_find_address: (len: number, count: number) => number,
  *   signer_cbor_output: () => number,
  *   signer_account_cbor: (account: number) => number,
  *   signer_multisig_cbor: () => number,
@@ -619,6 +621,38 @@ export class Signer {
 
   multisigUnload() {
     this.#e.signer_multisig_unload();
+  }
+
+  /** The registered multisig's address at chain 0 (receive) or 1 (change) and index below 100000. */
+  /** @param {{ chain?: number, index?: number }} [opts] */
+  multisigAddress({ chain = 0, index = 0 } = {}) {
+    for (const v of [chain, index]) {
+      if (!Number.isInteger(v) || v < 0 || v >= 2 ** 32) throw new RangeError(`${v} has to be an integer in range`);
+    }
+    const rc = this.#e.signer_multisig_address(chain, index);
+    if (rc !== 0) throw new SignerError("multisigAddress", rc);
+    const at = this.#e.signer_address_output();
+    const raw = this.#mem.subarray(at, at + L.limits.addressMax);
+    const nul = raw.indexOf(0);
+    return new TextDecoder().decode(raw.subarray(0, nul < 0 ? raw.length : nul));
+  }
+
+  /** Where an address is in the registered multisig, receive then change, indices 0 to count-1, or null.
+   *  Takes a bare address or a BIP21 URI.
+   * @param {string} address
+   * @param {{ count?: number }} [opts]
+   * @returns {{ chain: number, index: number } | null}
+   */
+  multisigFindAddress(address, { count = 1000 } = {}) {
+    const bytes = new TextEncoder().encode(address.trim().replace(/^bitcoin:/i, "").split("?")[0]);
+    const cap = this.#e.signer_input_cap();
+    if (bytes.length > cap) throw new RangeError(`an address of ${bytes.length} bytes, cap is ${cap}`);
+    if (!Number.isInteger(count) || count < 0 || count >= 2 ** 32) throw new RangeError(`count ${count} out of range`);
+    this.#mem.set(bytes, this.#e.signer_input());
+    const rc = this.#e.signer_multisig_find_address(bytes.length, count);
+    if (rc >= 0) return { chain: rc >> 20, index: rc & 0xfffff };
+    if (rc !== -NOT_FOUND) throw new SignerError("multisigFindAddress", -rc);
+    return null;
   }
 
   /** CBOR for a crypto-account UR: the account's sh(wpkh()), wpkh(), tr() and BIP48 keys. Hand it to

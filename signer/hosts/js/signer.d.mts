@@ -321,6 +321,24 @@ export class Signer {
         descriptor: string;
     };
     multisigUnload(): void;
+    /** The registered multisig's address at chain 0 (receive) or 1 (change) and index below 100000. */
+    /** @param {{ chain?: number, index?: number }} [opts] */
+    multisigAddress({ chain, index }?: {
+        chain?: number;
+        index?: number;
+    }): string;
+    /** Where an address is in the registered multisig, receive then change, indices 0 to count-1, or null.
+     *  Takes a bare address or a BIP21 URI.
+     * @param {string} address
+     * @param {{ count?: number }} [opts]
+     * @returns {{ chain: number, index: number } | null}
+     */
+    multisigFindAddress(address: string, { count }?: {
+        count?: number;
+    }): {
+        chain: number;
+        index: number;
+    } | null;
     /** CBOR for a crypto-account UR: the account's sh(wpkh()), wpkh(), tr() and BIP48 keys. Hand it to
      *  parser.wasm's parser_ur_encode_cbor(1, ...) */
     accountCbor({ account }?: {
@@ -378,6 +396,8 @@ export type SignerExports = {
     signer_multisig_load: (len: number) => number;
     signer_multisig_load_cbor: (len: number) => number;
     signer_multisig_unload: () => void;
+    signer_multisig_address: (chain: number, index: number) => number;
+    signer_multisig_find_address: (len: number, count: number) => number;
     signer_cbor_output: () => number;
     signer_account_cbor: (account: number) => number;
     signer_multisig_cbor: () => number;
