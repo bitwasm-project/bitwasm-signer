@@ -45,6 +45,7 @@ const found = S.findAddress("bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5
 console.log(`found ${found.chain} ${found.index}`);
 console.log(`address ${S.address({ purpose: 49, account: 2, chain: 1, index: 7 })}`);
 console.log(`desc ${S.xpub({ purpose: 86, account: 1 }).descriptor}`);
+console.log(`path xpub ${S.pathXpub([48 + 2 ** 31, 1 + 2 ** 31, 2 ** 31, 2 + 2 ** 31, 7])}`);
 console.log(`dice ${new TextDecoder().decode(S.mnemonicFromDice(new TextEncoder().encode("3".repeat(99))))}`);
 console.log(`seedqr ${new TextDecoder().decode(S.seedQRFromMnemonic(new TextEncoder().encode("abandon ".repeat(11) + "about")))}`);
 console.log(`bip85 ${new TextDecoder().decode(S.bip85Mnemonic({ words: 24, index: 3 }))}`);

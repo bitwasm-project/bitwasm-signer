@@ -314,6 +314,8 @@ static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const 
 
     if (type == SPK_P2WSH) return wallet_owner(p, r, o);
     d = purpose && k->depth >= 3 ? account_root(purpose & ~H, k->path[k->depth - 3] & ~H, root) : 0;
+    /* Either coin type, as SeedSigner has it: a signed input must still be on the very same account */
+    if (d == 3 && (k->path[1] == H || k->path[1] == (1 | H))) root[1] = k->path[1];
     if (!d || k->depth != d + 2 || memcmp(k->path, root, d * sizeof(uint32_t)) || k->path[d] > 1 ||
         k->path[d + 1] >= MAX_ADDRESS_INDEX)
         return CORE_OUT_EXTERNAL;
@@ -859,31 +861,46 @@ int core_message_sign(uint8_t sig[65]) {
     return ok ? CORE_OK : CORE_ERR_CRYPTO;
 }
 
-/* m/purpose'/coin'/account' (BIP48 adds 2' for P2WSH) serialized as an xpub, with its path */
-static int account_key(unsigned int purpose, uint32_t account, uint32_t path[4], unsigned int *depth, uint8_t ser[78]) {
-    const uint32_t coin = network == CORE_TESTNET ? 1u : 0u;
+/* The key at path, depth 1 or more, serialized as an xpub */
+static int path_key(const uint32_t *path, unsigned int depth, uint8_t ser[78]) {
     const uint32_t ver = network == CORE_TESTNET ? 0x043587cfu : 0x0488b21eu;
     bip32_node_t parent, node;
     uint8_t pub[33], h[20];
     unsigned int o = 0;
     int ok;
 
-    *depth = electrum ? 1 : purpose == 48 ? 4 : 3;
-    path[0] = electrum ? H : purpose | H, path[1] = coin | H, path[2] = account | H, path[3] = 2 | H;
     /* Derived in two steps because the serialization needs the parent's fingerprint */
-    ok = bip32_derive(ctx, &master, path, *depth - 1, &parent) && bip32_pubkey(ctx, parent.key, pub);
+    ok = bip32_derive(ctx, &master, path, depth - 1, &parent) && bip32_pubkey(ctx, parent.key, pub);
     hash160(pub, sizeof(pub), h);
-    ok = ok && bip32_derive(ctx, &parent, path + *depth - 1, 1, &node) && bip32_pubkey(ctx, node.key, pub);
+    ok = ok && bip32_derive(ctx, &parent, path + depth - 1, 1, &node) && bip32_pubkey(ctx, node.key, pub);
     /* version(4) depth(1) parent fingerprint(4) child number(4) chain code(32) pubkey(33) */
     for (int i = 3; i >= 0; i--) ser[o++] = (uint8_t)(ver >> (8 * i));
-    ser[o++] = (uint8_t)*depth;
+    ser[o++] = (uint8_t)depth;
     memcpy(ser + o, h, 4), o += 4;
-    for (int i = 3; i >= 0; i--) ser[o++] = (uint8_t)(path[*depth - 1] >> (8 * i));
+    for (int i = 3; i >= 0; i--) ser[o++] = (uint8_t)(path[depth - 1] >> (8 * i));
     memcpy(ser + o, node.chain, 32), o += 32;
     memcpy(ser + o, pub, 33);
     wipe(&parent, sizeof(parent));
     wipe(&node, sizeof(node));
     return ok;
+}
+
+/* m/purpose'/coin'/account' (BIP48 adds 2' for P2WSH) serialized as an xpub, with its path */
+static int account_key(unsigned int purpose, uint32_t account, uint32_t path[4], unsigned int *depth, uint8_t ser[78]) {
+    const uint32_t coin = network == CORE_TESTNET ? 1u : 0u;
+    *depth = electrum ? 1 : purpose == 48 ? 4 : 3;
+    path[0] = electrum ? H : purpose | H, path[1] = coin | H, path[2] = account | H, path[3] = 2 | H;
+    return path_key(path, *depth, ser);
+}
+
+int core_path_xpub(const uint32_t *path, unsigned int depth, char out[CORE_XPUB_MAX]) {
+    uint8_t ser[78];
+    memset(out, 0, CORE_XPUB_MAX);
+    if (!master_fp) return CORE_ERR_NO_SEED;
+    if (depth < 1 || depth > PLAN_MAX_DEPTH || electrum) return CORE_ERR_FORMAT;
+    if (!path_key(path, depth, ser)) return CORE_ERR_CRYPTO;
+    base58check_data(ser, sizeof(ser), out);
+    return CORE_OK;
 }
 
 /* The account xpub (m/purpose'/coin'/account') and an output descriptor built from it. Hand these to

@@ -121,7 +121,7 @@ int core_address(unsigned int purpose, uint32_t account, uint32_t chain, uint32_
 #define CORE_DESC_MAX 180
 /* BIP137, purpose 49 or 84. Review shows the key's address and the message, in hex unless it is printable
  * ASCII with no space at either end or two in a row; sign then signs that message, once */
-#define CORE_MESSAGE_MAX 512
+#define CORE_MESSAGE_MAX 1024
 enum { CORE_TEXT_MESSAGE = 0, CORE_TEXT_HEX };
 typedef struct {
     char address[ADDRESS_MAX];
@@ -134,6 +134,9 @@ int core_message_review(const uint8_t *msg, size_t len, unsigned int purpose, ui
 int core_message_sign(uint8_t sig[65]);
 
 int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB_MAX], char desc[CORE_DESC_MAX]);
+/* The xpub (tpub on testnet) at any path of depth 1 to PLAN_MAX_DEPTH, as SeedSigner exports a custom derivation's;
+ * refused for an Electrum seed. CORE_OK, or _FORMAT / _NO_SEED */
+int core_path_xpub(const uint32_t *path, unsigned int depth, char out[CORE_XPUB_MAX]);
 
 /* Registers a P2WSH sortedmulti or multi wallet of at most six keys from a descriptor, a BSMS 1.0 record or a Coldcard
  * setup file, or wsh(or_d(X,and_v(v:Y,older(n)))) from its descriptor: X pk() or multi() of up to three keys, Y the

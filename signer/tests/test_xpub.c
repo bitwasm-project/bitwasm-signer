@@ -79,6 +79,30 @@ int main(void) {
     CHECK(core_account_xpub(84, H, xpub, desc) == CORE_ERR_FORMAT, "a hardened account refused");
     CHECK(core_account_xpub(0, 0, xpub, desc) == CORE_ERR_FORMAT, "purpose 0 refused");
 
+    /* Any path, as SeedSigner exports a custom derivation's; embit derives the same keys */
+    {
+        static const uint32_t p84[] = {84 | H, H, H}, p48[] = {48 | H, 1 | H, H, 2 | H}, m0[] = {0},
+                              deep[] = {44 | H, H, H, 0, 1, 2, 3, 4};
+        char path_xpub[CORE_XPUB_MAX];
+        CHECK(core_account_xpub(84, 0, xpub, desc) == CORE_OK && core_path_xpub(p84, 3, path_xpub) == CORE_OK &&
+                  !strcmp(xpub, path_xpub),
+              "m/84'/0'/0' as the account's");
+        CHECK(core_path_xpub(p48, 4, path_xpub) == CORE_OK &&
+                  !strcmp(path_xpub, "xpub6EuX7TBEwhFgifQY24vFeMRqeWHGyGCupztDxk7G2ECAqGQ22Fik8E811p8GrM2LfajQzLid"
+                                     "Xy4qECxhdcxChkjiKhnq2fiVMVjdfSoZQwg"),
+              "testnet's BIP48 path on mainnet");
+        CHECK(core_path_xpub(m0, 1, path_xpub) == CORE_OK &&
+                  !strcmp(path_xpub, "xpub68jrRzQfUmwSaf5Y37Yd5uwfnMRxiR14M3HBonDr91GB7GKEh7R9Mvu2UeCtbASfXZ9FdNo9"
+                                     "FwFx6a37HNXUDiXVQFXuadXmevRBa3y7rL8"),
+              "m/0, unhardened");
+        CHECK(core_path_xpub(deep, 8, path_xpub) == CORE_OK &&
+                  !strcmp(path_xpub, "xpub6N88ghGRgFCnFFMjhZt1fQiPsjmdw1rbNjWZSWDA8EHAULHMqsw5rNtkfdv4gYSPbugPkdJQ"
+                                     "iziqp4cw9yXQfLQF3YGsmPuBgctgaHUUinY"),
+              "eight steps deep");
+        CHECK(core_path_xpub(deep, 9, path_xpub) == CORE_ERR_FORMAT && !path_xpub[0], "nine refused");
+        CHECK(core_path_xpub(deep, 0, path_xpub) == CORE_ERR_FORMAT, "the master refused");
+    }
+
     CHECK(core_init(CORE_TESTNET) && core_load_seed(seed), "load testnet");
     CHECK(core_account_xpub(84, 0, xpub, desc) == CORE_OK, "testnet BIP84 xpub");
     printf("  %s\n", desc);

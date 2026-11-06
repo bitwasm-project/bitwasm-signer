@@ -30,11 +30,11 @@ DP_OUT_TEXT_CAP = 167
 SIG_SIZE = 108
 SIG_LEN = 34
 SIG_SIG = 35
-MSG_SIZE = 1101
+MSG_SIZE = 2125
 MSG_ADDRESS = 0
 MSG_TEXT_KIND = 75
 MSG_TEXT = 76
-MSG_TEXT_CAP = 1025
+MSG_TEXT_CAP = 2049
 MAX_INPUTS = 16
 MAX_OUTPUTS = 16
 XPUB_MAX = 120
@@ -335,6 +335,17 @@ class Signer:
             raise SignerError("xpub", rc)
         return {"xpub": self._cstr(self._e.signer_xpub_output(), XPUB_MAX),
                 "descriptor": self._cstr(self._e.signer_desc_output(), DESC_MAX)}
+
+    def path_xpub(self, path) -> str:
+        """The xpub (tpub on testnet) at any path of one to eight steps, 2**31 added for a hardened one: what
+        SeedSigner exports for a custom derivation. Refused for an Electrum seed."""
+        if not (1 <= len(path) <= 8 and all(0 <= v < 2**32 for v in path)):
+            raise ValueError("a path is one to eight integers below 2**32")
+        self._input(b"".join(v.to_bytes(4, "little") for v in path))
+        rc = self._e.signer_path_xpub(len(path))
+        if rc != 0:
+            raise SignerError("path_xpub", rc)
+        return self._cstr(self._e.signer_xpub_output(), XPUB_MAX)
 
     def multisig_load(self, text: str | bytes | bytearray):
         """Registers a checked P2WSH wallet and returns what the person must verify."""
