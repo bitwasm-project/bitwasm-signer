@@ -112,6 +112,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_find_address(len, account, count)` | where the address in `signer_input()` is on m/purpose'/coin'/account', receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there. See below |
 | `signer_fingerprint()` | the master fingerprint, or 0 when no seed is loaded |
 | `signer_multisig_load(len)` | 0 on success. Registers the multisig in the input buffer; see below |
+| `signer_multisig_watch(len)` | 0 on success. The same wallet `signer_multisig_load` reads, with no seed needed and none of its keys ours (`ours` 255), for `signer_multisig_address` and `signer_multisig_find_address` alone: review and signing go on as if no wallet were registered, and `signer_multisig_cbor` refuses it. Loading a seed or another wallet forgets it |
 | `signer_multisig_load_cbor(len)` | 0 on success. Registers a BCR-2020-010 `crypto-output` CBOR payload from the input buffer; see below |
 | `signer_multisig_unload()` | nothing. Forgets the registered multisig |
 | `signer_multisig_address(chain, index)` | 0 on success. The registered multisig's address at `chain` 0 (receive) or 1 (change) and `index` below 100000, into `signer_address_output()`; `WALLET` without one, `FORMAT` out of range |

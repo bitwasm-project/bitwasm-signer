@@ -447,16 +447,18 @@ class Signer(signerWasm: ByteArray, sha256: String) {
      * another seed unloads it.
      */
     fun multisigLoad(text: ByteArray): Multisig {
-        return loadMultisig(text, false)
+        return loadMultisig(text, "multisigLoad", "signer_multisig_load")
     }
 
-    fun multisigLoadCbor(cbor: ByteArray): Multisig = loadMultisig(cbor, true)
+    fun multisigLoadCbor(cbor: ByteArray): Multisig = loadMultisig(cbor, "multisigLoadCbor", "signer_multisig_load_cbor")
 
-    private fun loadMultisig(raw: ByteArray, cbor: Boolean): Multisig {
+    /** The same wallet with no seed needed, for multisigAddress() and multisigFindAddress() alone; ours is 255 */
+    fun multisigWatch(text: ByteArray): Multisig = loadMultisig(text, "multisigWatch", "signer_multisig_watch")
+
+    private fun loadMultisig(raw: ByteArray, stage: String, export: String): Multisig {
         require(raw.size <= inputCapacity) { "${raw.size} bytes of multisig setup does not fit in $inputCapacity" }
-        val stage = if (cbor) "multisigLoadCbor" else "multisigLoad"
         memory.write(call("signer_input"), raw)
-        val rc = call(if (cbor) "signer_multisig_load_cbor" else "signer_multisig_load", raw.size.toLong())
+        val rc = call(export, raw.size.toLong())
         if (rc != 0) throw SignerException(stage, rc)
         val at = call("signer_multisig_output")
         val fps = bytes(at + L.MS_FINGERPRINTS, 4 * u8(at + L.MS_N))

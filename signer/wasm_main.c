@@ -304,6 +304,12 @@ int EXPORT(signer_multisig_load)(unsigned int len) {
     wipe(in, sizeof(in));
     return rc;
 }
+/* As signer_multisig_load, with no seed needed and the wallet for signer_multisig_address and _find_address alone */
+int EXPORT(signer_multisig_watch)(unsigned int len) {
+    int rc = len <= sizeof(in) ? core_multisig_watch((const char *)in, len, &multisig) : CORE_ERR_FORMAT;
+    wipe(in, sizeof(in));
+    return rc;
+}
 int EXPORT(signer_multisig_load_cbor)(unsigned int len) {
     int rc = len <= sizeof(in) ? core_multisig_load_cbor(in, len, &multisig) : CORE_ERR_FORMAT;
     wipe(in, sizeof(in));

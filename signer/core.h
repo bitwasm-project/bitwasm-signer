@@ -150,6 +150,8 @@ typedef struct {
     uint32_t lock;               /* OR_D: the older() or after() value after which the recovery keys can spend */
 } core_multisig_t;
 int core_multisig_load(const char *text, size_t len, core_multisig_t *out);
+/* The same wallet for its addresses alone, needing no seed: review and signing go on as if none were registered */
+int core_multisig_watch(const char *text, size_t len, core_multisig_t *out);
 /* Registers BCR-2020-010 crypto-output CBOR after converting its BIP48 multipath keys for the same checks */
 int core_multisig_load_cbor(const uint8_t *cbor, size_t len, core_multisig_t *out);
 void core_multisig_unload(void);
