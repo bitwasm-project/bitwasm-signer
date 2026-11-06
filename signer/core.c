@@ -54,7 +54,7 @@ static int spk_type(const plan_script_t *s) {
     return SPK_OTHER;
 }
 
-/* OP_m, n distinct compressed keys, OP_n, OP_CHECKMULTISIG with 1 <= m <= n, n at most six as the plan holds.
+/* OP_m, n distinct compressed keys, OP_n, OP_CHECKMULTISIG with 1 <= m <= n, n at most 15 as the plan holds.
  * Returns n, or 0 otherwise */
 static unsigned int multisig_keys(const plan_wscript_t *w) {
     unsigned int n = w->len >= 3 ? (w->len - 3u) / 34u : 0, m = w->bytes[0] - 0x50u;

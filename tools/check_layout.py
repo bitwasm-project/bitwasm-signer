@@ -176,7 +176,7 @@ def main():
 
     # The wscripts offset is typed by hand in the parser spec and in two test files
     ws, stride = truth["plan_t"]["wscripts"], truth["plan_t"]["wscript_size"]
-    row = f"| `plan_t.wscripts` | {ws:,} | stride {stride}: 1 byte length + {truth['limits']['max_wscript']} bytes |"
+    row = f"| `plan_t.wscripts` | {ws:,} | stride {stride}: 2-byte length + {truth['limits']['max_wscript']} bytes |"
     if row not in Path("parser/docs/abi.md").read_text():
         bad.append(f"parser/docs/abi.md: does not have the row {row}")
     for path, text in [("signer/hosts/js/test.mjs", f"WS = (i) => {ws} + {stride} * i"),

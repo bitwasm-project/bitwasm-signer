@@ -511,7 +511,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
             in_.key = KeyPath { depth: c.depth, fingerprint: fp, path: c.path };
             if let (true, Some(w)) = (in_.spk.is_p2wsh(), ws) {
                 let dst = &mut out.plan.wscripts[idx];
-                dst.len = w.len() as u8;
+                dst.len = w.len() as u16;
                 dst.bytes[..w.len()].copy_from_slice(w);
             }
         }

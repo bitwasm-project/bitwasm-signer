@@ -299,7 +299,7 @@ static void or_d_wscript(const ms_wallet_t *w, const uint8_t (*k)[33], plan_wscr
     o += put_check(s + o, w->threshold2, n2, k + w->primary, 1, n2 == 1 && !(w->kind & MS_OR_D_PK));
     o += ms_scriptnum(w->lock, s + o);
     s[o++] = w->kind & MS_OR_D_AFTER ? 0xb1 : 0xb2, s[o++] = 0x68;
-    out->len = (uint8_t)o;
+    out->len = (uint16_t)o;
 }
 
 int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscript_t *out) {
