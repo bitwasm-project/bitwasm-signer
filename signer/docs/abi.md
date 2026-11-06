@@ -42,7 +42,7 @@ way it is not for `parser.wasm`.
 
 ```
 signer_init(flags)
-signer_seed_from_mnemonic(...)   or   signer_seed_from_seedqr(...)   or   signer_load_seed()
+signer_seed_from_mnemonic(...)   or   signer_seed_from_seedqr(...)   or   signer_seed_from_electrum(...)   or   signer_load_seed()
 signer_plan()        <- write the 8536-byte plan_t here
 signer_set_prevtx(i, off, len)   for each input, after writing into signer_prevtx()
 signer_review()      -> re-derives keys, decides what is ours, computes the fee
@@ -90,6 +90,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 |---|---|
 | `signer_init(flags: i32)` | 1 on success. Bit 0: testnet, which covers signet too. Bit 1: refuse an OP_RETURN output not made of complete pushes (`OP_RETURN`); without it such an output is shown as hex. Bit 2: sign SegWit v0 inputs without their previous transactions (no `PREVTX_MISSING`), their amounts then taken on the PSBT's word; one given is still checked. Other bits must be 0 |
 | `signer_seed_from_mnemonic(mn_len, pass_len)` | 1 on success. English BIP39 words with a valid checksum; surrounding and repeated whitespace and capitals are normalised first, the passphrase is used as given. PBKDF2 2048 rounds, about half a second |
+| `signer_seed_from_electrum(mn_len, pass_len)` | 1 on success. An Electrum segwit seed: the words normalised as for BIP39, refused unless HMAC-SHA512("Seed version", words) starts with Electrum's segwit version 0x100, and the passphrase as Electrum normalises it (NFKD, lower case, single spaces). PBKDF2 with the salt "electrum". The P2WPKH account (`purpose` 84, `account` 0) is then m/0h for `signer_xpub`, `signer_address`, `signer_find_address` and change; other purposes, other accounts and message signing are refused with `FORMAT` |
 | `signer_seed_from_seedqr(qr_len, pass_len)` | 1 on success. Standard (48 or 96 digits) or Compact (16 or 32 bytes); 0 if the BIP39 checksum fails |
 | `signer_load_seed()` | 1 on success, using the first 64 bytes of the input buffer |
 | `signer_mnemonic_from_entropy(len)` | the length of the new mnemonic, or 0. 16, 20, 24, 28 or 32 bytes of entropy give 12 to 24 words. Nothing is loaded |

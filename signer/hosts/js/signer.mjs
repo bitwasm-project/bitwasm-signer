@@ -40,6 +40,7 @@ const L = {
  *   signer_address_output: () => number,
  *   signer_init: (flags: number) => number,
  *   signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number,
+ *   signer_seed_from_electrum: (mnLen: number, passLen: number) => number,
  *   signer_seed_from_seedqr: (qrLen: number, passLen: number) => number,
  *   signer_load_seed: () => number,
  *   signer_unload: () => void,
@@ -190,6 +191,26 @@ export class Signer {
    * @param {Uint8Array} [passphrase]
    */
   seedFromMnemonic(mnemonic, passphrase = new Uint8Array(0)) {
+    return this.#seedFrom("signer_seed_from_mnemonic", mnemonic, passphrase);
+  }
+
+  /** Derives the key from an Electrum segwit seed's words, PBKDF2 with Electrum's salt, and refuses any other
+   *  Electrum version. The passphrase is as Electrum normalises it: NFKD, lower case, single spaces. From then on
+   *  the P2WPKH account is m/0h and the other purposes and message signing are refused. Both arrays are zeroed. */
+  /**
+   * @param {Uint8Array} mnemonic
+   * @param {Uint8Array} [passphrase]
+   */
+  seedFromElectrum(mnemonic, passphrase = new Uint8Array(0)) {
+    return this.#seedFrom("signer_seed_from_electrum", mnemonic, passphrase);
+  }
+
+  /**
+   * @param {"signer_seed_from_mnemonic" | "signer_seed_from_electrum"} fn
+   * @param {Uint8Array} mnemonic
+   * @param {Uint8Array} passphrase
+   */
+  #seedFrom(fn, mnemonic, passphrase) {
     try {
       if (!(mnemonic instanceof Uint8Array) || !(passphrase instanceof Uint8Array)) {
         throw new TypeError("mnemonic and passphrase are Uint8Array, so that they can be cleared");
@@ -201,9 +222,7 @@ export class Signer {
       const at = this.#e.signer_input();
       this.#mem.set(mnemonic, at);
       this.#mem.set(passphrase, at + mnemonic.length);
-      if (!this.#e.signer_seed_from_mnemonic(mnemonic.length, passphrase.length)) {
-        throw new Error("seed_from_mnemonic failed");
-      }
+      if (!this.#e[fn](mnemonic.length, passphrase.length)) throw new Error(`${fn.slice(7)} failed`);
     } finally {
       if (mnemonic instanceof Uint8Array) mnemonic.fill(0);
       if (passphrase instanceof Uint8Array) passphrase.fill(0);

@@ -75,6 +75,9 @@ typedef int (*core_rng_t)(uint8_t *buf, size_t len);
 int core_init(core_network_t net);
 void core_set_options(unsigned int opts);
 int core_load_seed(const uint8_t seed[64]);
+/* An Electrum segwit seed: its P2WPKH account is m/0h for the xpub, addresses and change, and the other purposes
+ * and message signing are refused, as Electrum and SeedSigner give it no others */
+int core_load_electrum_seed(const uint8_t seed[64]);
 void core_unload(void);
 uint32_t core_fingerprint(void);
 int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core_review_t *r);

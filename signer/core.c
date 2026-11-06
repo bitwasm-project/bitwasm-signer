@@ -27,6 +27,7 @@ static unsigned int options; /* core_set_options; cleared by core_init */
 static bip32_node_t master;
 static uint32_t master_fp;
 static int seed_loaded;
+static int electrum; /* core_load_electrum_seed: the P2WPKH account is m/0h, as Electrum's segwit seeds have it */
 static uint8_t reviewed_hash[32];
 static int reviewed;
 static uint8_t msg[CORE_MESSAGE_MAX], msg_hash[32]; /* the message review showed, and what binds it to sign */
@@ -288,6 +289,15 @@ static NOINLINE int wallet_owner(const plan_t *p, const core_review_t *r, const 
     return CORE_OUT_EXTERNAL;
 }
 
+/* The account's path for purpose 49, 84 or 86, m/purpose'/coin'/account', or for an Electrum seed P2WPKH's m/0h
+ * alone. Returns its depth, or 0 for an account the seed does not have */
+static unsigned int account_root(unsigned int purpose, uint32_t account, uint32_t path[3]) {
+    if (electrum) return purpose == 84 && account == 0 ? (path[0] = H, 1) : 0;
+    if ((purpose != 49 && purpose != 84 && purpose != 86) || account >= H) return 0;
+    path[0] = purpose | H, path[1] = (uint32_t)network | H, path[2] = account | H;
+    return 3;
+}
+
 /* An output counts as ours only on the receive (0) or change (1) chain of the same account as the
  * inputs we sign, and only when the re-derived key produces that exact script */
 static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const plan_output_t *o) {
@@ -299,16 +309,20 @@ static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const 
                        : type == SPK_P2TR        ? (86 | H)
                                                  : 0;
 
+    uint32_t root[3];
+    unsigned int d;
+
     if (type == SPK_P2WSH) return wallet_owner(p, r, o);
-    if (!purpose || k->depth != 5 || k->path[0] != purpose || k->path[1] != ((uint32_t)network | H) ||
-        !(k->path[2] & H) || k->path[3] > 1 || k->path[4] >= MAX_ADDRESS_INDEX)
+    d = purpose && k->depth >= 3 ? account_root(purpose & ~H, k->path[k->depth - 3] & ~H, root) : 0;
+    if (!d || k->depth != d + 2 || memcmp(k->path, root, d * sizeof(uint32_t)) || k->path[d] > 1 ||
+        k->path[d + 1] >= MAX_ADDRESS_INDEX)
         return CORE_OUT_EXTERNAL;
     for (unsigned int i = 0; i < p->n_inputs; i++) {
         const plan_keypath_t *ik = &p->inputs[i].key;
-        if (r->will_sign[i] && ik->depth == 5 && !memcmp(ik->path, k->path, 3 * sizeof(uint32_t))) {
+        if (r->will_sign[i] && ik->depth == d + 2 && !memcmp(ik->path, k->path, d * sizeof(uint32_t))) {
             int ok = owns(k, &o->spk, NULL, &node);
             wipe(&node, sizeof(node));
-            return !ok ? CORE_OUT_EXTERNAL : k->path[3] ? CORE_OUT_CHANGE : CORE_OUT_SELF;
+            return !ok ? CORE_OUT_EXTERNAL : k->path[d] ? CORE_OUT_CHANGE : CORE_OUT_SELF;
         }
     }
     return CORE_OUT_EXTERNAL;
@@ -364,11 +378,16 @@ int core_load_seed(const uint8_t seed[64]) {
     return 1;
 }
 
+int core_load_electrum_seed(const uint8_t seed[64]) {
+    return electrum = core_load_seed(seed);
+}
+
 void core_unload(void) {
     core_multisig_unload();
     wipe(&master, sizeof(master));
     master_fp = 0;
     seed_loaded = 0;
+    electrum = 0;
     reviewed = 0;
     msg_reviewed = 0;
     wipe(msg, sizeof(msg));
@@ -693,7 +712,7 @@ int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t c
     const int testnet = network == CORE_TESTNET;
     char want[ADDRESS_MAX], got[ADDRESS_MAX];
     int upper = 0, lower = 0, other = 0, rc = -CORE_ERR_NOT_FOUND;
-    unsigned int purpose, need;
+    unsigned int purpose, need, d;
     uint32_t path[3];
     bip32_node_t acct, chain;
     uint8_t spk[34], cpub[33];
@@ -719,10 +738,10 @@ int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t c
     want[len] = 0;
     if (other || (upper && lower)) return -CORE_ERR_FORMAT;
     if (len != need) return -CORE_ERR_NOT_FOUND; /* P2WSH, a P2SH of something else, or cut short: not ours */
+    if (!(d = account_root(purpose, account, path))) return -CORE_ERR_NOT_FOUND; /* an Electrum seed's, not P2WPKH */
 
     /* The chain's public key once, not once a child: it is half the work of each unhardened step */
-    path[0] = purpose | H, path[1] = (uint32_t)network | H, path[2] = account | H;
-    if (!bip32_derive(ctx, &master, path, 3, &acct)) rc = -CORE_ERR_CRYPTO;
+    if (!bip32_derive(ctx, &master, path, d, &acct)) rc = -CORE_ERR_CRYPTO;
     for (uint32_t c = 0; rc == -CORE_ERR_NOT_FOUND && c < 2; c++) {
         if (!bip32_derive(ctx, &acct, &c, 1, &chain) || !bip32_pubkey(ctx, chain.key, cpub)) rc = -CORE_ERR_CRYPTO;
         for (uint32_t i = 0; rc == -CORE_ERR_NOT_FOUND && i < count; i++) {
@@ -741,14 +760,14 @@ int core_address(unsigned int purpose, uint32_t account, uint32_t chain, uint32_
     bip32_node_t node;
     uint8_t spk[34], cpub[33];
     size_t n = 0;
+    unsigned int d;
     int rc = CORE_ERR_CRYPTO;
 
     out[0] = 0;
     if (!seed_loaded) return CORE_ERR_NO_SEED;
-    if ((purpose != 49 && purpose != 84 && purpose != 86) || account >= H || chain > 1 || index >= MAX_ADDRESS_INDEX)
-        return CORE_ERR_FORMAT;
-    path[0] = purpose | H, path[1] = (uint32_t)network | H, path[2] = account | H, path[3] = chain;
-    if (bip32_derive(ctx, &master, path, 4, &node) && bip32_pubkey(ctx, node.key, cpub))
+    if (!(d = account_root(purpose, account, path)) || chain > 1 || index >= MAX_ADDRESS_INDEX) return CORE_ERR_FORMAT;
+    path[d] = chain;
+    if (bip32_derive(ctx, &master, path, d + 1, &node) && bip32_pubkey(ctx, node.key, cpub))
         n = child_spk(&node, cpub, purpose, index, spk);
     if (n && address_encode(spk, n, network == CORE_TESTNET, out)) rc = CORE_OK;
     wipe(&node, sizeof(node));
@@ -778,7 +797,7 @@ int core_message_review(const uint8_t *m, size_t len, unsigned int purpose, uint
     msg_reviewed = 0;
     wipe(out, sizeof(*out));
     if (!seed_loaded) return CORE_ERR_NO_SEED;
-    if (len > CORE_MESSAGE_MAX || (purpose != 49 && purpose != 84) || account >= H || chain > 1 ||
+    if (len > CORE_MESSAGE_MAX || electrum || (purpose != 49 && purpose != 84) || account >= H || chain > 1 ||
         index >= MAX_ADDRESS_INDEX)
         return CORE_ERR_FORMAT;
     msg_path[0] = purpose | H, msg_path[1] = (uint32_t)network | H, msg_path[2] = account | H;
@@ -849,8 +868,8 @@ static int account_key(unsigned int purpose, uint32_t account, uint32_t path[4],
     unsigned int o = 0;
     int ok;
 
-    *depth = purpose == 48 ? 4 : 3;
-    path[0] = purpose | H, path[1] = coin | H, path[2] = account | H, path[3] = 2 | H;
+    *depth = electrum ? 1 : purpose == 48 ? 4 : 3;
+    path[0] = electrum ? H : purpose | H, path[1] = coin | H, path[2] = account | H, path[3] = 2 | H;
     /* Derived in two steps because the serialization needs the parent's fingerprint */
     ok = bip32_derive(ctx, &master, path, *depth - 1, &parent) && bip32_pubkey(ctx, parent.key, pub);
     hash160(pub, sizeof(pub), h);
@@ -877,7 +896,9 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
     char fp[9], acct[11];
 
     if (!master_fp) return CORE_ERR_NO_SEED;
-    if ((purpose != 48 && purpose != 49 && purpose != 84 && purpose != 86) || account >= H) return CORE_ERR_FORMAT;
+    if ((purpose != 48 && purpose != 49 && purpose != 84 && purpose != 86) || account >= H ||
+        (electrum && (purpose != 84 || account)))
+        return CORE_ERR_FORMAT;
     if (!account_key(purpose, account, path, &depth, ser)) return CORE_ERR_CRYPTO;
     base58check_data(ser, sizeof(ser), out);
 
@@ -900,14 +921,19 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
                                : purpose == 48 ? "["
                                                : "wpkh([",
                                fp,
-                               purpose == 86   ? "/86h/"
+                               electrum        ? "/0h]"
+                               : purpose == 86 ? "/86h/"
                                : purpose == 49 ? "/49h/"
                                : purpose == 48 ? "/48h/"
                                                : "/84h/",
-                               coin ? "1" : "0",
-                               "h/",
-                               acct,
-                               purpose == 48 ? "h/2h]" : "h]",
+                               electrum ? ""
+                               : coin   ? "1"
+                                        : "0",
+                               electrum ? "" : "h/",
+                               electrum ? "" : acct,
+                               electrum        ? ""
+                               : purpose == 48 ? "h/2h]"
+                                               : "h]",
                                out,
                                purpose == 49   ? "/<0;1>/*))"
                                : purpose == 48 ? "/<0;1>/*"
