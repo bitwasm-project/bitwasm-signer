@@ -415,7 +415,7 @@ int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core
         const core_prevtx_t *pv = prev ? &prev[i] : NULL;
         if (pv && pv->raw) {
             if (!prevtx_ok(&p->inputs[i], pv)) return CORE_ERR_PREVTX_MISMATCH;
-        } else if (has_v0 && p->n_inputs > 1) {
+        } else if (has_v0 && p->n_inputs > 1 && !(options & CORE_OPT_PREVTX_OPTIONAL)) {
             return CORE_ERR_PREVTX_MISSING;
         }
     }

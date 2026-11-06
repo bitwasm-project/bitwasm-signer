@@ -333,6 +333,8 @@ static void test_review_and_sign(void) {
     set_key(&p.inputs[1].key, 84 | H, H, H, 0, 1);
     p.outputs[1].amount = 89000;
     CHECK(core_review(&p, NULL, &r) == CORE_ERR_PREVTX_MISSING, "fee attack: prevtx required");
+    core_set_options(CORE_OPT_PREVTX_OPTIONAL);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.fee == 1000 && r.n_sign == 2, "prevtx optional: signed without it");
     prev[0].len = make_prevtx(raw0, 0, 100000, TV_SPK_P2WPKH_0_0, 22, p.inputs[0].prev_txid);
     prev[0].raw = raw0;
     prev[1].len = make_prevtx(raw1, 2, 50000, TV_SPK_P2WPKH_0_1, 22, p.inputs[1].prev_txid);
@@ -342,6 +344,8 @@ static void test_review_and_sign(void) {
     q = p;
     q.inputs[1].amount = 40000;
     q.outputs[1].amount = 79000;
+    CHECK(core_review(&q, prev, &r) == CORE_ERR_PREVTX_MISMATCH, "prevtx optional: one given is still checked");
+    core_set_options(0);
     CHECK(core_review(&q, prev, &r) == CORE_ERR_PREVTX_MISMATCH, "fee attack: lied amount");
     q = p;
     q.inputs[1].prev_vout = 1;
