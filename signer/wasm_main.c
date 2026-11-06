@@ -162,6 +162,31 @@ int EXPORT(signer_seed_from_seedqr)(unsigned int qr_len, unsigned int pass_len) 
     return ok;
 }
 
+/* An Electrum segwit seed: in holds the words, then the passphrase as Electrum normalises it (NFKD, lower case,
+ * single spaces). Refused unless HMAC-SHA512("Seed version", words) starts 0x100, Electrum's segwit version */
+int EXPORT(signer_seed_from_electrum)(unsigned int mn_len, unsigned int pass_len) {
+    uint8_t salt[8 + sizeof(in)], seed[64], version[64];
+    hmac_sha512_ctx h;
+    size_t n = 0;
+    int ok = mn_len <= sizeof(in) && pass_len <= sizeof(in) - mn_len;
+    if (ok) {
+        memmove(salt + 8, in + mn_len, pass_len);
+        n = bip39_normalize(in, mn_len, in);
+        hmac_sha512_init(&h, (const uint8_t *)"Seed version", 12);
+        sha512_update(&h.inner, in, n);
+        hmac_sha512_final(&h, version);
+        ok = n && version[0] == 0x10 && (version[1] >> 4) == 0;
+    }
+    if (ok) {
+        memcpy(salt, "electrum", 8);
+        pbkdf2_hmac_sha512(in, n, salt, 8 + pass_len, 2048, seed);
+        ok = core_load_electrum_seed(seed);
+    }
+    wipe(salt, sizeof(salt)), wipe(seed, sizeof(seed)), wipe(version, sizeof(version)), wipe(&h, sizeof(h));
+    wipe(in, sizeof(in));
+    return ok;
+}
+
 /* Use the first 64 bytes of in as the seed */
 int EXPORT(signer_load_seed)(void) {
     int ok = core_load_seed(in);

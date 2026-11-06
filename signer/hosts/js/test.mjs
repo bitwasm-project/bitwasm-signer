@@ -748,6 +748,25 @@ for (const [what, bad] of [["a bad checksum", "abandon ".repeat(11) + "abandon"]
   }
 }
 
+// --- Electrum segwit seeds, against Electrum's test_wallet_vertical: a passphrase as Electrum normalises it, and a
+// BIP39 mnemonic, whose HMAC is not Electrum's segwit version
+{
+  const ELECTRUM = "bitter grass shiver impose acquire brush forget axis eager alone wine silver";
+  const B = await Signer.load(signerWasm, pin);
+  B.init().seedFromElectrum(new TextEncoder().encode(ELECTRUM));
+  check("an Electrum seed's fingerprint", B.fingerprint, "b2e35a7d");
+  check("its receive 0, at m/0h/0/0", B.address(), "bc1q3g5tmkmlvxryhh843v4dz026avatc0zzr6h3af");
+  B.init().seedFromElectrum(new TextEncoder().encode(ELECTRUM), new TextEncoder().encode("satoshi nakamoto"));
+  check("with a passphrase", B.address(), "bc1qdy02zcw9ghgd5248d8qj24j60whurvdvt02s6v");
+  const F = await Signer.load(signerWasm, pin);
+  try {
+    F.init().seedFromElectrum(new TextEncoder().encode(MNEMONIC));
+    ok("a BIP39 mnemonic is not an Electrum seed", false);
+  } catch (e) {
+    ok("a BIP39 mnemonic is not an Electrum seed", /seed_from_electrum failed/.test(e.message) && F.fingerprint === "00000000");
+  }
+}
+
 // --- SeedQR, against the published vector 4: the words never leave the module, so the fingerprint
 // has to equal the one from typing them
 {

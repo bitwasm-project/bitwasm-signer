@@ -510,6 +510,57 @@ static void test_anti_exfil(void) {
     secp256k1_context_destroy(ctx);
 }
 
+/* Electrum's own segwit test seed (bitter grass shiver ...), its PBKDF2 output; xpub and addresses from Electrum's
+ * test_wallet_vertical */
+static void test_electrum(void) {
+    static const char electrum_seed[] = "8ff3b1fa35d0bace7e80255253ee1ada21586eccd341bb90ae8ff5a7214e7d62"
+                                        "b2be30df64807fd8716e604c66da392834853644bffdab8a7d9ac029f52a9a8c";
+    uint8_t seed[64], spk0[22], spk1[22];
+    char xpub[CORE_XPUB_MAX], desc[CORE_DESC_MAX], addr[ADDRESS_MAX];
+    core_review_t r;
+    core_message_t m;
+    plan_t p;
+
+    unhex(electrum_seed, seed);
+    unhex("00148a28bddb7f61864bdcf58b2ad13d5aeb3abc3c42", spk0);
+    unhex("0014690b59a8140602fb23cc2904ece9cc4daf361052", spk1);
+    CHECK(core_load_electrum_seed(seed) && core_fingerprint() == 0xb2e35a7d, "Electrum seed loaded");
+    CHECK(core_account_xpub(84, 0, xpub, desc) == CORE_OK &&
+              !strcmp(xpub,
+                      "xpub69Cm26ZhqfAuejFN7RcRK11Fkaqw6TDim9LfLS942vGrsesF9JbABEFmLEDadVG7vgTLHsQARRuKJ2SfFu94zRvBaH"
+                      "pcEE7k3LXci9vCfSU") &&
+              !strcmp(desc,
+                      "wpkh([b2e35a7d/0h]xpub69Cm26ZhqfAuejFN7RcRK11Fkaqw6TDim9LfLS942vGrsesF9JbABEFmLEDadVG7vgTLHsQ"
+                      "ARRuKJ2SfFu94zRvBaHpcEE7k3LXci9vCfSU/<0;1>/*)"),
+          "its account is m/0h: %s", desc);
+    CHECK(core_address(84, 0, 0, 0, addr) == CORE_OK && !strcmp(addr, "bc1q3g5tmkmlvxryhh843v4dz026avatc0zzr6h3af"),
+          "Electrum's receive 0: %s", addr);
+    CHECK(core_address(84, 0, 1, 3, addr) == CORE_OK && !strcmp(addr, "bc1q0avs3yx242pq9p5g5mm7lq9dt3pe8etyphc7ac") &&
+              core_find_address(addr, strlen(addr), 0, 5) == (1 << 20 | 3),
+          "change 3, and found there");
+    CHECK(core_account_xpub(49, 0, xpub, desc) == CORE_ERR_FORMAT &&
+              core_account_xpub(84, 1, xpub, desc) == CORE_ERR_FORMAT &&
+              core_address(86, 0, 0, 0, addr) == CORE_ERR_FORMAT &&
+              core_message_review((const uint8_t *)"hi", 2, 84, 0, 0, 0, &m) == CORE_ERR_FORMAT,
+          "no other purpose or account, and no message signing");
+
+    base_plan(&p);
+    set_spk(&p.inputs[0].spk, spk0, 22);
+    p.inputs[0].key.depth = 3, memset(p.inputs[0].key.path, 0, sizeof(p.inputs[0].key.path));
+    p.inputs[0].key.path[0] = H, p.inputs[0].key.fingerprint = 0xb2e35a7d;
+    set_spk(&p.outputs[1].spk, spk1, 22);
+    p.outputs[1].key = p.inputs[0].key, p.outputs[1].key.path[1] = 1;
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_CHANGE,
+          "an input at m/0h/0/0 signed, its change at m/0h/1/0 recognised");
+    p.outputs[1].key.path[1] = 2;
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_EXTERNAL, "chain 2 is not change");
+
+    CHECK(core_load_seed(seed) && core_address(49, 0, 0, 0, addr) == CORE_OK &&
+              core_address(84, 0, 0, 0, addr) == CORE_OK && strcmp(addr, "bc1q3g5tmkmlvxryhh843v4dz026avatc0zzr6h3af"),
+          "the same bytes as a BIP39 seed have BIP84's accounts again");
+    core_unload();
+}
+
 int main(void) {
     if (!core_init(CORE_MAINNET)) return 1;
     test_bip143();
@@ -517,6 +568,7 @@ int main(void) {
     test_address();
     test_review_and_sign();
     test_anti_exfil();
+    test_electrum();
     printf("%d/%d checks passed\n", checks - failures, checks);
     return failures != 0;
 }

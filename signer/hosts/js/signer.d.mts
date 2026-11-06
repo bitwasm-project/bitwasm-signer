@@ -130,6 +130,14 @@ export class Signer {
      * @param {Uint8Array} [passphrase]
      */
     seedFromMnemonic(mnemonic: Uint8Array, passphrase?: Uint8Array): this;
+    /** Derives the key from an Electrum segwit seed's words, PBKDF2 with Electrum's salt, and refuses any other
+     *  Electrum version. The passphrase is as Electrum normalises it: NFKD, lower case, single spaces. From then on
+     *  the P2WPKH account is m/0h and the other purposes and message signing are refused. Both arrays are zeroed. */
+    /**
+     * @param {Uint8Array} mnemonic
+     * @param {Uint8Array} [passphrase]
+     */
+    seedFromElectrum(mnemonic: Uint8Array, passphrase?: Uint8Array): this;
     /** Derives the key from a SeedQR: the Standard digits as ASCII bytes, or the CompactSeedQR's raw
      *  bytes. The words stay inside the module, so confirm what was loaded by its fingerprint. Both
      *  arrays are zeroed before this returns. */
@@ -388,6 +396,7 @@ export type SignerExports = {
     signer_address_output: () => number;
     signer_init: (flags: number) => number;
     signer_seed_from_mnemonic: (mnLen: number, passLen: number) => number;
+    signer_seed_from_electrum: (mnLen: number, passLen: number) => number;
     signer_seed_from_seedqr: (qrLen: number, passLen: number) => number;
     signer_load_seed: () => number;
     signer_unload: () => void;
