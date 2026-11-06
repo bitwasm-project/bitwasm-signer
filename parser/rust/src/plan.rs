@@ -53,6 +53,16 @@ impl Script {
         self.len == 34 && self.bytes[0] == 0x51 && self.bytes[1] == 32
     }
 
+    /// P2PKH, which the signer signs only with every input's previous transaction to prove the amounts.
+    pub fn is_p2pkh(&self) -> bool {
+        self.len == 25
+            && self.bytes[0] == 0x76
+            && self.bytes[1] == 0xa9
+            && self.bytes[2] == 20
+            && self.bytes[23] == 0x88
+            && self.bytes[24] == 0xac
+    }
+
     /// `0020{32 bytes}`. That the witness script hashes to it, and is a multisig with our key, is
     /// for the signer to establish.
     pub fn is_p2wsh(&self) -> bool {

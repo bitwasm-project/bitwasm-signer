@@ -40,7 +40,7 @@ static int wallet_watch; /* registered by core_multisig_watch: its addresses onl
 static uint8_t host_nonce[PLAN_MAX_INPUTS][32], host_nonce_set[PLAN_MAX_INPUTS];
 static uint8_t nonce_points[PLAN_MAX_SIGS][33]; /* Q for each signature core_sign() made, zero without a host nonce */
 
-enum { SPK_OTHER, SPK_P2WPKH, SPK_P2SH_P2WPKH, SPK_P2TR, SPK_P2WSH };
+enum { SPK_OTHER, SPK_P2WPKH, SPK_P2SH_P2WPKH, SPK_P2TR, SPK_P2WSH, SPK_P2PKH };
 _Static_assert(MS_MAX_KEYS == CORE_MULTISIG_MAX_KEYS && MS_SORTEDMULTI == CORE_WALLET_SORTEDMULTI &&
                    MS_OR_D == CORE_WALLET_OR_D && MS_OR_D_PK == CORE_WALLET_OR_D_PK &&
                    MS_OR_D_AFTER == CORE_WALLET_OR_D_AFTER && MS_MULTI == CORE_WALLET_MULTI,
@@ -51,6 +51,9 @@ static int spk_type(const plan_script_t *s) {
     if (s->len == 23 && s->bytes[0] == 0xa9 && s->bytes[1] == 20 && s->bytes[22] == 0x87) return SPK_P2SH_P2WPKH;
     if (s->len == 34 && s->bytes[0] == 0x51 && s->bytes[1] == 32) return SPK_P2TR;
     if (s->len == 34 && s->bytes[0] == 0x00 && s->bytes[1] == 32) return SPK_P2WSH;
+    if (s->len == 25 && s->bytes[0] == 0x76 && s->bytes[1] == 0xa9 && s->bytes[2] == 20 && s->bytes[23] == 0x88 &&
+        s->bytes[24] == 0xac)
+        return SPK_P2PKH;
     return SPK_OTHER;
 }
 
@@ -154,6 +157,9 @@ static int owns(const plan_keypath_t *key, const plan_script_t *spk, const plan_
     if (key->fingerprint != master_fp || !bip32_derive(ctx, &master, key->path, key->depth, node)) return 0;
     if ((type == SPK_P2WPKH || type == SPK_P2SH_P2WPKH) && bip32_pubkey(ctx, node->key, pub)) {
         ok = wpkh_spk(pub, type == SPK_P2SH_P2WPKH, mine) == spk->len && !memcmp(mine, spk->bytes, spk->len);
+    } else if (type == SPK_P2PKH && bip32_pubkey(ctx, node->key, pub)) {
+        hash160(pub, 33, mine);
+        ok = !memcmp(mine, spk->bytes + 3, 20);
     } else if (type == SPK_P2TR && taproot_tweak(node->key, xonly, &kp)) {
         ok = !memcmp(xonly, spk->bytes + 2, 32);
     } else if (type == SPK_P2WSH && ws && bip32_pubkey(ctx, node->key, pub)) {
@@ -289,11 +295,11 @@ static NOINLINE int wallet_owner(const plan_t *p, const core_review_t *r, const 
     return CORE_OUT_EXTERNAL;
 }
 
-/* The account's path for purpose 49, 84 or 86, m/purpose'/coin'/account', or for an Electrum seed P2WPKH's m/0h
+/* The account's path for purpose 44, 49, 84 or 86, m/purpose'/coin'/account', or for an Electrum seed P2WPKH's m/0h
  * alone. Returns its depth, or 0 for an account the seed does not have */
 static unsigned int account_root(unsigned int purpose, uint32_t account, uint32_t path[3]) {
     if (electrum) return purpose == 84 && account == 0 ? (path[0] = H, 1) : 0;
-    if ((purpose != 49 && purpose != 84 && purpose != 86) || account >= H) return 0;
+    if ((purpose != 44 && purpose != 49 && purpose != 84 && purpose != 86) || account >= H) return 0;
     path[0] = purpose | H, path[1] = (uint32_t)network | H, path[2] = account | H;
     return 3;
 }
@@ -307,6 +313,7 @@ static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const 
     uint32_t purpose = type == SPK_P2WPKH        ? (84 | H)
                        : type == SPK_P2SH_P2WPKH ? (49 | H)
                        : type == SPK_P2TR        ? (86 | H)
+                       : type == SPK_P2PKH       ? (44 | H)
                                                  : 0;
 
     uint32_t root[3];
@@ -406,7 +413,7 @@ uint32_t core_fingerprint(void) {
 
 int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core_review_t *r) {
     bip32_node_t node;
-    int has_v0 = 0;
+    int has_v0 = 0, has_legacy = 0;
 
     reviewed = 0;
     wipe(r, sizeof(*r));
@@ -427,16 +434,18 @@ int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core
         r->will_sign[i] = 1;
         r->n_sign++;
         has_v0 |= type != SPK_P2TR;
+        has_legacy |= type == SPK_P2PKH;
     }
     if (!r->n_sign) return CORE_ERR_NOTHING_TO_SIGN;
 
     /* BIP143 commits only to the amount of the input being signed, so with two or more inputs every
-     * amount is checked against the previous transaction it claims to come from */
+     * amount is checked against the previous transaction it claims to come from. A legacy signature commits to
+     * no amount at all, so with one every input needs its previous transaction, whatever the options */
     for (unsigned int i = 0; i < p->n_inputs; i++) {
         const core_prevtx_t *pv = prev ? &prev[i] : NULL;
         if (pv && pv->raw) {
             if (!prevtx_ok(&p->inputs[i], pv)) return CORE_ERR_PREVTX_MISMATCH;
-        } else if (has_v0 && p->n_inputs > 1 && !(options & CORE_OPT_PREVTX_OPTIONAL)) {
+        } else if (has_legacy || (has_v0 && p->n_inputs > 1 && !(options & CORE_OPT_PREVTX_OPTIONAL))) {
             return CORE_ERR_PREVTX_MISSING;
         }
     }
@@ -582,8 +591,9 @@ static int sign_input(const plan_t *p, unsigned int i, const plan_keypath_t *key
         uint32_t counter = 0;
         ok = bip32_pubkey(ctx, node.key, s->pubkey);
         hash160(s->pubkey, 33, pkh);
-        ok = ok && (spk_type(&in->spk) == SPK_P2WSH ? sighash_bip143_p2wsh(p, i, &p->wscripts[i], digest)
-                                                    : sighash_bip143_p2wpkh(p, i, pkh, digest));
+        ok = ok && (spk_type(&in->spk) == SPK_P2WSH   ? sighash_bip143_p2wsh(p, i, &p->wscripts[i], digest)
+                    : spk_type(&in->spk) == SPK_P2PKH ? sighash_legacy(p, i, in->spk.bytes, in->spk.len, digest)
+                                                      : sighash_bip143_p2wpkh(p, i, pkh, digest));
         /* Under anti-exfil, no low-R grinding: retrying would be the very churning it is there to limit */
         if (ex.n) {
             ok = ok && secp256k1_ecdsa_sign(ctx, &sig, digest, node.key, exfil_ecdsa, &ex);
@@ -688,7 +698,7 @@ int core_sign(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_SIGS], u
     return rc;
 }
 
-/* The scriptPubKey of child i of a chain whose public key is cpub, for purpose 49, 84 or 86. Returns its
+/* The scriptPubKey of child i of a chain whose public key is cpub, for purpose 44, 49, 84 or 86. Returns its
  * length, or 0 */
 static size_t child_spk(const bip32_node_t *chain, const uint8_t cpub[33], unsigned int purpose, uint32_t i,
                         uint8_t spk[34]) {
@@ -698,7 +708,10 @@ static size_t child_spk(const bip32_node_t *chain, const uint8_t cpub[33], unsig
     size_t n = 0;
 
     if (bip32_child(chain, cpub, i, &child)) {
-        if (purpose != 86 && bip32_pubkey(ctx, child.key, pub)) {
+        if (purpose == 44 && bip32_pubkey(ctx, child.key, pub)) {
+            spk[0] = 0x76, spk[1] = 0xa9, spk[2] = 20, spk[23] = 0x88, spk[24] = 0xac, n = 25;
+            hash160(pub, 33, spk + 3);
+        } else if (purpose != 86 && bip32_pubkey(ctx, child.key, pub)) {
             n = wpkh_spk(pub, purpose == 49, spk);
         } else if (purpose == 86 && taproot_tweak(child.key, spk + 2, &kp)) {
             spk[0] = 0x51, spk[1] = 32, n = 34;
@@ -722,10 +735,14 @@ int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t c
 
     if (!seed_loaded) return -CORE_ERR_NO_SEED;
     if (len < 4 || len >= ADDRESS_MAX || account >= H || !count || count > MAX_ADDRESS_INDEX) return -CORE_ERR_FORMAT;
-    if (addr[0] == (testnet ? '2' : '3')) { /* BIP49's P2SH-P2WPKH, in base58, where case is part of the address */
+    if (addr[0] == (testnet ? '2' : '3') || addr[0] == '1' || addr[0] == 'm' || addr[0] == 'n') {
+        /* BIP49's P2SH-P2WPKH or BIP44's P2PKH, in base58, where case is part of the address. P2PKH's leading zero
+         * bytes shorten it, so its length is the derived address's to decide */
         for (size_t i = 0; i < len; i++) other |= !addr[i] || !strchr(b58, addr[i]);
         memcpy(want, addr, len);
-        purpose = 49, need = testnet ? 35 : 34;
+        purpose = addr[0] == (testnet ? '2' : '3') ? 49 : 44;
+        need = purpose == 44 ? len : testnet ? 35 : 34;
+        other |= purpose == 44 && (addr[0] == '1') == testnet;
     } else { /* BIP173 allows all upper case, which is what a QR's alphanumeric mode carries, but not mixed */
         for (size_t i = 0; i < len; i++) {
             char c = addr[i];
@@ -793,22 +810,28 @@ static void msg_binding(uint8_t out[32]) {
 int core_message_review(const uint8_t *m, size_t len, unsigned int purpose, uint32_t account, uint32_t chain,
                         uint32_t index, core_message_t *out) {
     bip32_node_t node;
-    uint8_t pub[33], spk[23];
+    uint8_t pub[33], spk[25];
+    size_t spk_len;
     int printable = 1, ok;
 
     msg_reviewed = 0;
     wipe(out, sizeof(*out));
     if (!seed_loaded) return CORE_ERR_NO_SEED;
-    if (len > CORE_MESSAGE_MAX || electrum || (purpose != 49 && purpose != 84) || account >= H || chain > 1 ||
-        index >= MAX_ADDRESS_INDEX)
+    if (len > CORE_MESSAGE_MAX || electrum || (purpose != 44 && purpose != 49 && purpose != 84) || account >= H ||
+        chain > 1 || index >= MAX_ADDRESS_INDEX)
         return CORE_ERR_FORMAT;
     msg_path[0] = purpose | H, msg_path[1] = (uint32_t)network | H, msg_path[2] = account | H;
     msg_path[3] = chain, msg_path[4] = index;
     ok = bip32_derive(ctx, &master, msg_path, 5, &node) && bip32_pubkey(ctx, node.key, pub);
     wipe(&node, sizeof(node));
     if (!ok) return CORE_ERR_CRYPTO;
-    if (!address_encode(spk, wpkh_spk(pub, purpose == 49, spk), network == CORE_TESTNET, out->address))
-        return CORE_ERR_CRYPTO;
+    if (purpose == 44) {
+        spk[0] = 0x76, spk[1] = 0xa9, spk[2] = 20, spk[23] = 0x88, spk[24] = 0xac, spk_len = 25;
+        hash160(pub, 33, spk + 3);
+    } else {
+        spk_len = wpkh_spk(pub, purpose == 49, spk);
+    }
+    if (!address_encode(spk, spk_len, network == CORE_TESTNET, out->address)) return CORE_ERR_CRYPTO;
 
     /* Spaces at either end or two in a row cannot be counted on screen, so those messages go to hex too */
     for (size_t i = 0; i < len; i++)
@@ -854,7 +877,7 @@ int core_message_sign(uint8_t sig[65]) {
          secp256k1_ecdsa_recoverable_signature_serialize_compact(ctx, sig + 1, &recid, &rs) &&
          secp256k1_ecdsa_recover(ctx, &rec, &rs, hash) &&
          secp256k1_ec_pubkey_serialize(ctx, got, &glen, &rec, SECP256K1_EC_COMPRESSED) && !memcmp(got, pub, 33);
-    sig[0] = (uint8_t)((msg_path[0] == (84 | H) ? 39 : 35) + recid);
+    sig[0] = (uint8_t)((msg_path[0] == (84 | H) ? 39 : msg_path[0] == (49 | H) ? 35 : 31) + recid);
     wipe(&node, sizeof(node));
     wipe(&h, sizeof(h));
     if (!ok) wipe(sig, 65);
@@ -913,7 +936,7 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
     char fp[9], acct[11];
 
     if (!master_fp) return CORE_ERR_NO_SEED;
-    if ((purpose != 48 && purpose != 49 && purpose != 84 && purpose != 86) || account >= H ||
+    if ((purpose != 44 && purpose != 48 && purpose != 49 && purpose != 84 && purpose != 86) || account >= H ||
         (electrum && (purpose != 84 || account)))
         return CORE_ERR_FORMAT;
     if (!account_key(purpose, account, path, &depth, ser)) return CORE_ERR_CRYPTO;
@@ -936,12 +959,14 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
         const char *parts[] = {purpose == 86   ? "tr(["
                                : purpose == 49 ? "sh(wpkh(["
                                : purpose == 48 ? "["
+                               : purpose == 44 ? "pkh(["
                                                : "wpkh([",
                                fp,
                                electrum        ? "/0h]"
                                : purpose == 86 ? "/86h/"
                                : purpose == 49 ? "/49h/"
                                : purpose == 48 ? "/48h/"
+                               : purpose == 44 ? "/44h/"
                                                : "/84h/",
                                electrum ? ""
                                : coin   ? "1"

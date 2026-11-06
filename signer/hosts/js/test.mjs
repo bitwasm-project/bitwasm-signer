@@ -168,7 +168,7 @@ try {
   mem().set(mn, E.signer_input());
   E.signer_seed_from_mnemonic(mn.length, 0);
   check("the raw ABI exports an xpub", E.signer_xpub(84, 0), 0);
-  check("then refuses BIP44", E.signer_xpub(44, 0), 1);
+  check("then refuses purpose 45", E.signer_xpub(45, 0), 1);
   ok("and the xpub and descriptor buffers are empty", mem()[E.signer_xpub_output()] === 0 && mem()[E.signer_desc_output()] === 0);
 }
 // JavaScript would wrap these into a valid i32, so the library refuses them before the module sees them
@@ -180,7 +180,7 @@ for (const [what, opts] of [["2^32 + 1", { account: 2 ** 32 + 1 }], ["1.5", { ac
     ok(`xpub for account ${what} is refused`, e instanceof RangeError);
   }
 }
-for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", { account: 0x80000000 }]]) {
+for (const [what, opts] of [["purpose 45", { purpose: 45 }], ["a hardened account", { account: 0x80000000 }]]) {
   try {
     S.xpub(opts);
     ok(`xpub for ${what} is refused`, false);
@@ -196,13 +196,15 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("BIP84 change 1/0", found("bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"), '{"chain":1,"index":0}');
   check("BIP86 0/1", found("bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh"), '{"chain":0,"index":1}');
   check("BIP49 change 1/0, in base58", found("34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7"), '{"chain":1,"index":0}');
+  check("BIP44 change 1/3, P2PKH", found("1DzVLMA4HzjXPAr6aZoaacDPHXXntsZ2zL"), '{"chain":1,"index":3}');
+  check("someone else's P2PKH", found("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"), "null");
   check("a BIP21 URI in upper case, as a QR carries it",
         found("bitcoin:BC1QNJG0JD8228AQ7EGYZACY8CYS3KNF9XVRERKF9G?amount=0.1"), '{"chain":0,"index":1}');
   check("not ours", found("bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"), "null");
   check("beyond count", found("bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", { count: 1 }), "null");
   check("another account", found("bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", { account: 1, count: 20 }), "null");
   for (const [what, a, err, opts] of [["a testnet address", "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl", SignerError],
-                                ["base58", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", SignerError],
+                                ["a testnet P2PKH", "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV", SignerError],
                                 ["an oversized string", "bc1q" + "q".repeat(3100), RangeError],
                                 ["a NUL inside", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g\0junk", SignerError],
                                 ["a count JavaScript would wrap", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", RangeError, { count: 2 ** 32 + 5 }]]) {
@@ -220,7 +222,8 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("address BIP84 0/1", S.address({ chain: 0, index: 1 }), "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g");
   check("address BIP86 0/1", S.address({ purpose: 86, index: 1 }), "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh");
   check("address BIP49 change 1/0", S.address({ purpose: 49, chain: 1 }), "34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7");
-  for (const [what, opts, err] of [["legacy", { purpose: 44 }, SignerError], ["chain 2", { chain: 2 }, SignerError],
+  check("address BIP44 0/0", S.address({ purpose: 44 }), "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA");
+  for (const [what, opts, err] of [["purpose 45", { purpose: 45 }, SignerError], ["chain 2", { chain: 2 }, SignerError],
                                    ["an index we would not call ours", { index: 100000 }, SignerError],
                                    ["an index JavaScript would wrap", { index: 2 ** 32 }, RangeError]]) {
     try {

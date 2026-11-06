@@ -482,7 +482,10 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
     let chosen = if in_.spk.is_wpkh() && (in_.spk.len == 22 || wpkh_redeem) && bip32.found && !signed_by_cand {
         in_.sighash_type = if sighash == 0xffff_ffff { 0x01 } else { sighash as u8 };
         Some(bip32)
-    } else if in_.spk.is_p2wsh() && ws.is_some_and(|w| w.len() <= MAX_WSCRIPT) && bip32.found && !signed_by_cand {
+    } else if ((in_.spk.is_p2wsh() && ws.is_some_and(|w| w.len() <= MAX_WSCRIPT)) || in_.spk.is_p2pkh())
+        && bip32.found
+        && !signed_by_cand
+    {
         in_.sighash_type = if sighash == 0xffff_ffff { 0x01 } else { sighash as u8 };
         Some(bip32)
     } else if in_.spk.is_p2tr() && tap.found && !has_merkle && !has_tapsig {
@@ -567,7 +570,7 @@ fn parse_output(r: &mut Reader, idx: usize, fp: u32, out: &mut Parsed) -> Res {
     }
 
     let o = &mut out.plan.outputs[idx];
-    let chosen = if (o.spk.is_wpkh() || o.spk.is_p2wsh()) && bip32.found {
+    let chosen = if (o.spk.is_wpkh() || o.spk.is_p2wsh() || o.spk.is_p2pkh()) && bip32.found {
         Some(bip32)
     } else if o.spk.is_p2tr() && tap.found && !has_tree {
         Some(tap)

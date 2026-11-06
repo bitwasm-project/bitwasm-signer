@@ -58,6 +58,8 @@ def spk(path):
         return script.p2tr(key(path))
     if path.startswith("m/49h"):
         return script.p2sh(script.p2wpkh(key(path)))
+    if path.startswith("m/44h"):
+        return script.p2pkh(key(path))
     return script.p2wpkh(key(path))
 
 
@@ -98,7 +100,8 @@ def build(name, inputs, outputs, cosigned=False):
                         "key": keypath(path) if path else None})
     psbt = PSBT(Transaction(version=2, vin=vin, vout=vout))
     for inp, (path, _, _, nwu), (ptx, v, s, amount) in zip(psbt.inputs, inputs, prevs):
-        inp.witness_utxo = TransactionOutput(amount, s)
+        if not (path and path.startswith("m/44h")):  # a legacy input has its previous transaction alone
+            inp.witness_utxo = TransactionOutput(amount, s)
         if nwu:
             inp.non_witness_utxo = ptx
         if path and path.startswith("m/86h"):
@@ -155,6 +158,11 @@ build("own_mixed_p2wsh_nwu", [(A + "/0/0", 100000, 0, True), (W + "/0/2", 50000,
       [(None, 100000), (A + "/1/0", 49000)])
 build("own_with_p2wsh_2of7_input", [(A + "/0/0", 100000, 0, True), ("m/48h/0h/1h/2h/0/0", 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
+# BIP44 P2PKH, which the signer signs only with every input's previous transaction
+L = "m/44h/0h/0h"
+build("own_p2pkh_1in", [(L + "/0/0", 100000, 0, True)], [(None, 60000), (L + "/1/0", 39000)])
+build("own_mixed_p2pkh_nwu", [(L + "/0/0", 100000, 0, True), (A + "/0/1", 50000, 1, True)],
+      [(None, 100000), (L + "/1/0", 49000)])
 build("own_with_foreign_input", [(A + "/0/0", 100000, 0, True), (None, 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
 

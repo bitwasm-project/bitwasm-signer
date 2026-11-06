@@ -106,6 +106,11 @@ static int is_wpkh(const plan_script_t *s) {
 static int is_p2tr(const plan_script_t *s) {
     return s->len == 34 && s->bytes[0] == 0x51 && s->bytes[1] == 32;
 }
+/* P2PKH, which the signer signs only with every input's previous transaction to prove the amounts */
+static int is_p2pkh(const plan_script_t *s) {
+    return s->len == 25 && s->bytes[0] == 0x76 && s->bytes[1] == 0xa9 && s->bytes[2] == 20 && s->bytes[23] == 0x88 &&
+           s->bytes[24] == 0xac;
+}
 /* That the witness script hashes to it, and is a multisig with our key, is for the signer to establish */
 static int is_p2wsh(const plan_script_t *s) {
     return s->len == 34 && s->bytes[0] == 0 && s->bytes[1] == 32;
@@ -304,7 +309,8 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
     if (is_wpkh(&in->spk) && (in->spk.len == 22 || wpkh_redeem) && bip32.found && !signed_by_cand) {
         c = &bip32;
         in->sighash_type = sighash == 0xffffffffu ? 0x01 : (uint8_t)sighash;
-    } else if (is_p2wsh(&in->spk) && ws && ws->vlen <= PLAN_MAX_WSCRIPT && bip32.found && !signed_by_cand) {
+    } else if (((is_p2wsh(&in->spk) && ws && ws->vlen <= PLAN_MAX_WSCRIPT) || is_p2pkh(&in->spk)) && bip32.found &&
+               !signed_by_cand) {
         c = &bip32;
         in->sighash_type = sighash == 0xffffffffu ? 0x01 : (uint8_t)sighash;
     } else if (is_p2tr(&in->spk) && tap.found && !has_merkle && !has_tapsig) {
@@ -371,9 +377,9 @@ static int parse_output(rd_t *r, unsigned int idx, uint32_t fp) {
             break;
         }
     }
-    const cand_t *c = (is_wpkh(&o->spk) || is_p2wsh(&o->spk)) && bip32.found ? &bip32
-                      : is_p2tr(&o->spk) && tap.found && !has_tree           ? &tap
-                                                                             : NULL;
+    const cand_t *c = (is_wpkh(&o->spk) || is_p2wsh(&o->spk) || is_p2pkh(&o->spk)) && bip32.found ? &bip32
+                      : is_p2tr(&o->spk) && tap.found && !has_tree                                ? &tap
+                                                                                                  : NULL;
     if (c) {
         o->key.depth = c->depth;
         o->key.fingerprint = fp;

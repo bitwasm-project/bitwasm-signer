@@ -78,6 +78,12 @@ int main(void) {
     CHECK(core_account_xpub(84, 1, xpub, desc) == CORE_OK && strstr(desc, "/84h/0h/1h]"), "account 1");
     CHECK(core_account_xpub(84, H, xpub, desc) == CORE_ERR_FORMAT, "a hardened account refused");
     CHECK(core_account_xpub(0, 0, xpub, desc) == CORE_ERR_FORMAT, "purpose 0 refused");
+    CHECK(core_account_xpub(44, 0, xpub, desc) == CORE_OK &&
+              !strcmp(xpub,
+                      "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhU"
+                      "d9yLb6qx39T9nMdj") &&
+              !strncmp(desc, "pkh([73c5da0a/44h/0h/0h]xpub6Bos", 32) && strstr(desc, "/<0;1>/*)"),
+          "BIP44 xpub and its pkh() descriptor");
 
     /* Any path, as SeedSigner exports a custom derivation's; embit derives the same keys */
     {

@@ -95,7 +95,11 @@ int main(void) {
     CHECK(review(big, 1025, 84, 0, 0, &m) == CORE_ERR_FORMAT, "1025 bytes refused");
     CHECK(core_message_sign(sig) == CORE_ERR_NOT_REVIEWED, "a refused review leaves nothing to sign");
     CHECK(review(MSG, strlen(MSG), 86, 0, 0, &m) == CORE_ERR_FORMAT, "P2TR is not BIP137");
-    CHECK(review(MSG, strlen(MSG), 44, 0, 0, &m) == CORE_ERR_FORMAT, "BIP44 refused");
+    CHECK(review(MSG, strlen(MSG), 44, 0, 0, &m) == CORE_OK &&
+              !strcmp(m.address, "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA") && core_message_sign(sig) == CORE_OK &&
+              sig[0] >= 31 && sig[0] <= 34,
+          "BIP44 P2PKH, with BIP137's compressed P2PKH header");
+    CHECK(review(MSG, strlen(MSG), 45, 0, 0, &m) == CORE_ERR_FORMAT, "purpose 45 refused");
     CHECK(review(MSG, strlen(MSG), 84, 2, 0, &m) == CORE_ERR_FORMAT, "chain 2 refused");
     CHECK(review(MSG, strlen(MSG), 84, 0, 100000, &m) == CORE_ERR_FORMAT, "index 100000 refused");
     CHECK(core_message_review((const uint8_t *)MSG, strlen(MSG), 84, H, 0, 0, &m) == CORE_ERR_FORMAT,

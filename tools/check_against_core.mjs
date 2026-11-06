@@ -26,6 +26,9 @@ import { Signer } from "../signer/hosts/js/signer.mjs";
 // a Bitcoin library of its own — and checked against signer.wasm's own xpub below, so a wrong
 // constant fails loudly instead of quietly testing the wrong key.
 const ACCOUNTS = [
+  { kind: "pkh", close: ")", purpose: 44,
+    tprv: "tprv8fVU32aAEuEPeH1WYx3LhXtSFZTRaFqjbFNPaJZ9R8fCVja44tSaUPZEKGpMK6McUDkWWMvRiVfKR3Wzei6AmLoTNYHMAZ9KtvVTLZZdhvA",
+    xpub: "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj" },
   { kind: "wpkh", close: ")", purpose: 84,
     tprv: "tprv8gGUtTW1HhuYrycHNfewtKXPYsB3CgE8uK733ntLBPGfyDhse352wryMJXvQr4zkNDL3ZBDZvJh5NpkuqyEZtLvNLLNmjJD4UV6dsRECvrC",
     xpub: "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V" },
@@ -255,7 +258,7 @@ const pin = { sha256: createHash("sha256").update(signerWasm).digest("hex") };
       const core = Buffer.from(cli("signmessagewithprivkey", wif(a.tprv, chain, index), text), "base64");
       s.messageReview(new TextEncoder().encode(text), { purpose: a.purpose, chain, index });
       const ours = Buffer.from(s.messageSign());
-      if (!ours.subarray(1).equals(core.subarray(1)) || ours[0] !== core[0] + (a.purpose === 84 ? 8 : 4)) {
+      if (!ours.subarray(1).equals(core.subarray(1)) || ours[0] !== core[0] + (a.purpose === 84 ? 8 : a.purpose === 49 ? 4 : 0)) {
         console.error(`m/${a.purpose}'/0'/0'/${chain}/${index} "${text.slice(0, 20)}": ours ${ours.toString("base64")}, Core ${core.toString("base64")}`);
         process.exit(1);
       }
