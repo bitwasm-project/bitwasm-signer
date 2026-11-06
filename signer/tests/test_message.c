@@ -60,7 +60,7 @@ int main(void) {
     const uint32_t p84[5] = {84 | H, H, H, 0, 0}, p49[5] = {49 | H, H, H, 1, 7};
     core_message_t m;
     uint8_t sig[65];
-    char big[513];
+    char big[1025];
 
     pbkdf2_hmac_sha512((const uint8_t *)words, sizeof(words) - 1, (const uint8_t *)"mnemonic", 8, 2048, seed);
     CHECK(core_init(CORE_MAINNET), "init");
@@ -91,8 +91,8 @@ int main(void) {
     CHECK(review("a b c", 5, 84, 0, 0, &m) == CORE_OK && m.text_kind == CORE_TEXT_MESSAGE, "single spaces are text");
 
     memset(big, 'a', sizeof(big));
-    CHECK(review(big, 512, 84, 0, 0, &m) == CORE_OK, "512 bytes");
-    CHECK(review(big, 513, 84, 0, 0, &m) == CORE_ERR_FORMAT, "513 bytes refused");
+    CHECK(review(big, 1024, 84, 0, 0, &m) == CORE_OK, "1024 bytes");
+    CHECK(review(big, 1025, 84, 0, 0, &m) == CORE_ERR_FORMAT, "1025 bytes refused");
     CHECK(core_message_sign(sig) == CORE_ERR_NOT_REVIEWED, "a refused review leaves nothing to sign");
     CHECK(review(MSG, strlen(MSG), 86, 0, 0, &m) == CORE_ERR_FORMAT, "P2TR is not BIP137");
     CHECK(review(MSG, strlen(MSG), 44, 0, 0, &m) == CORE_ERR_FORMAT, "BIP44 refused");

@@ -38,6 +38,7 @@ fun main(args: Array<String>) {
     println("found ${found.chain} ${found.index}")
     println("address ${s.address(purpose = 49, account = 2, chain = 1, index = 7)}")
     println("desc ${s.xpub(purpose = 86, account = 1).descriptor}")
+    println("path xpub ${s.pathXpub(longArrayOf(48L + (1L shl 31), 1L + (1L shl 31), 1L shl 31, 2L + (1L shl 31), 7L))}")
     println("dice ${String(s.mnemonicFromDice("3".repeat(99).toByteArray()))}")
     println("seedqr ${String(s.seedQRFromMnemonic(("abandon ".repeat(11) + "about").toCharArray()))}")
     println("bip85 ${String(s.bip85Mnemonic(words = 24, index = 3))}")

@@ -89,6 +89,7 @@ if dumpOnly {
     print("found \(found.chain) \(found.index)")
     print("address \(try s.address(purpose: 49, account: 2, chain: 1, index: 7))")
     print("desc \(try s.xpub(purpose: 86, account: 1).descriptor)")
+    print("path xpub \(try s.pathXpub([48 + 0x8000_0000, 1 + 0x8000_0000, 0x8000_0000, 2 + 0x8000_0000, 7]))")
     var rolls = [UInt8](String(repeating: "3", count: 99).utf8)
     print("dice \(String(decoding: try s.mnemonicFromDice(&rolls), as: UTF8.self))")
     var abandon = [UInt8](mnemonicText.utf8)

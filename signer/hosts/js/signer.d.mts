@@ -295,6 +295,10 @@ export class Signer {
         xpub: string;
         descriptor: string;
     };
+    /** The xpub (tpub on testnet) at any path of one to eight steps, as numbers with 2^31 added for a hardened one:
+     *  what SeedSigner exports for a custom derivation. Refused for an Electrum seed. */
+    /** @param {number[]} path */
+    pathXpub(path: number[]): string;
     /** Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
      *  Coldcard setup file, or a Liana, Nunchuk or Keeper or_d wallet from its descriptor. Show what this returns, the receive address
      *  above all, before trusting it: from then on the wallet's inputs are signed only when they are the
@@ -407,6 +411,7 @@ export type SignerExports = {
     signer_facts: () => number;
     signer_sign: () => number;
     signer_xpub: (purpose: number, account: number) => number;
+    signer_path_xpub: (depth: number) => number;
     signer_find_address: (len: number, account: number, count: number) => number;
     signer_address: (purpose: number, account: number, chain: number, index: number) => number;
     signer_mnemonic_output: () => number;

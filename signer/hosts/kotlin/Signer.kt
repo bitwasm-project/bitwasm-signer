@@ -443,6 +443,20 @@ class Signer(signerWasm: ByteArray, sha256: String) {
     }
 
     /**
+     * The xpub (tpub on testnet) at any path of one to eight steps, 2^31 added for a hardened one: what SeedSigner
+     * exports for a custom derivation. Refused for an Electrum seed.
+     */
+    fun pathXpub(path: LongArray): String {
+        require(path.size in 1..8 && path.all { it in 0L..0xffffffffL }) { "a path is one to eight integers below 2^32" }
+        val bytes = ByteArray(4 * path.size)
+        path.forEachIndexed { i, v -> for (b in 0..3) bytes[4 * i + b] = (v shr (8 * b)).toByte() }
+        memory.write(call("signer_input"), bytes)
+        val rc = call("signer_path_xpub", path.size.toLong())
+        if (rc != 0) throw SignerException("pathXpub", rc)
+        return cstr(call("signer_xpub_output"), L.XPUB_MAX)
+    }
+
+    /**
      * Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
      * Coldcard setup file. Show what this returns, the receive address above all, before trusting it. Loading
      * another seed unloads it.

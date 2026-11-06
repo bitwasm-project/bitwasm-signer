@@ -253,6 +253,21 @@ int EXPORT(signer_xpub)(unsigned int purpose, unsigned int account) {
     return rc;
 }
 
+/* in holds the path, depth little-endian uint32s; the xpub goes to signer_xpub_output() */
+int EXPORT(signer_path_xpub)(unsigned int depth) {
+    uint32_t path[PLAN_MAX_DEPTH];
+    int rc = CORE_ERR_FORMAT;
+    if (depth <= PLAN_MAX_DEPTH) {
+        for (unsigned int i = 0; i < depth; i++)
+            path[i] = (uint32_t)in[4 * i] | (uint32_t)in[4 * i + 1] << 8 | (uint32_t)in[4 * i + 2] << 16 |
+                      (uint32_t)in[4 * i + 3] << 24;
+        rc = core_path_xpub(path, depth, xpub);
+    }
+    wipe(in, sizeof(in));
+    if (rc) wipe(xpub, sizeof(xpub));
+    return rc;
+}
+
 int EXPORT(signer_address)(unsigned int purpose, unsigned int account, unsigned int chain, unsigned int index) {
     return core_address(purpose, account, chain, index, address);
 }

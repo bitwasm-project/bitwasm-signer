@@ -501,6 +501,17 @@ public final class Signer {
         )
     }
 
+    /// The xpub (tpub on testnet) at any path of one to eight steps, 2^31 added for a hardened one: what SeedSigner
+    /// exports for a custom derivation. Refused for an Electrum seed.
+    public func pathXpub(_ path: [UInt32]) throws -> String {
+        guard (1...8).contains(path.count) else { throw SignerError.tooLarge(size: path.count, capacity: 8) }
+        try write(path.flatMap { v in (0..<4).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } },
+                  at: Int(try call("signer_input")))
+        let rc = try call("signer_path_xpub", [.i32(UInt32(path.count))])
+        guard rc == 0 else { throw SignerError.refused(stage: "pathXpub", code: rc) }
+        return try cstr(Int(try call("signer_xpub_output")), L.xpubMax)
+    }
+
     /// Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
     /// Coldcard setup file. Show what this returns, the receive address above all, before trusting it. Loading
     /// another seed unloads it.
