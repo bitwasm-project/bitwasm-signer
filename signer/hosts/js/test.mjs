@@ -391,6 +391,10 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   const found = W.multisigFindAddress(`bitcoin:${W.multisigAddress({ chain: 1, index: 4 }).toUpperCase()}?amount=1`);
   ok("multisigFindAddress finds change 4 from an upper-case BIP21 URI", found?.chain === 1 && found?.index === 4);
   ok("and not beyond count", W.multisigFindAddress(W.multisigAddress({ chain: 1, index: 4 }), { count: 4 }) === null);
+  const watched = W.multisigWatch(`wsh(sortedmulti(2,${K0},${K1},${K2}))`);
+  ok("multisigWatch reads the same wallet, ours 255", watched.ours === 255 && watched.receive === ms.receive &&
+     W.multisigAddress({ chain: 1, index: 0 }) === change0);
+  W.multisigLoad(`wsh(sortedmulti(2,${K0},${K1},${K2}))`);
   for (const name of ["own_p2wsh_2of3_1in", "own_p2wsh_2of3_cosigned"]) {
     const v = planFor(`${root}parser/build/vectors/${name}.psbt`, FP);
     const r = W.setPlan(v.plan).setPrevTxs(v.prevTxs).review();

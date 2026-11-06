@@ -66,6 +66,7 @@ const L = {
  *   signer_multisig_output: () => number,
  *   signer_multisig_load: (len: number) => number,
  *   signer_multisig_load_cbor: (len: number) => number,
+ *   signer_multisig_watch: (len: number) => number,
  *   signer_multisig_unload: () => void,
  *   signer_multisig_address: (chain: number, index: number) => number,
  *   signer_multisig_find_address: (len: number, count: number) => number,
@@ -575,22 +576,31 @@ export class Signer {
   /** @param {string | Uint8Array} text */
   multisigLoad(text) {
     const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
-    return this.#multisigLoad(bytes, false);
+    return this.#multisigLoad(bytes, "multisigLoad");
   }
 
   /** Registers a BIP48 sortedmulti wallet from its typed crypto-output CBOR. */
   /** @param {Uint8Array} cbor */
   multisigLoadCbor(cbor) {
-    return this.#multisigLoad(cbor, true);
+    return this.#multisigLoad(cbor, "multisigLoadCbor");
   }
 
-  /** @param {Uint8Array} bytes @param {boolean} cbor */
-  #multisigLoad(bytes, cbor) {
+  /** The same wallet as multisigLoad() reads, with no seed needed, for multisigAddress() and multisigFindAddress()
+   *  alone: review and signing go on as if none were registered, and ours is 255. */
+  /** @param {string | Uint8Array} text */
+  multisigWatch(text) {
+    const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
+    return this.#multisigLoad(bytes, "multisigWatch");
+  }
+
+  /** @param {Uint8Array} bytes @param {"multisigLoad" | "multisigLoadCbor" | "multisigWatch"} stage */
+  #multisigLoad(bytes, stage) {
     const cap = this.#e.signer_input_cap();
     if (bytes.length > cap) throw new RangeError(`a multisig setup of ${bytes.length} bytes, cap is ${cap}`);
     this.#mem.set(bytes, this.#e.signer_input());
-    const rc = cbor ? this.#e.signer_multisig_load_cbor(bytes.length) : this.#e.signer_multisig_load(bytes.length);
-    if (rc !== 0) throw new SignerError(cbor ? "multisigLoadCbor" : "multisigLoad", rc);
+    const rc = stage === "multisigLoadCbor" ? this.#e.signer_multisig_load_cbor(bytes.length)
+      : stage === "multisigWatch" ? this.#e.signer_multisig_watch(bytes.length) : this.#e.signer_multisig_load(bytes.length);
+    if (rc !== 0) throw new SignerError(stage, rc);
     const at = this.#e.signer_multisig_output(), m = L.multisig;
     const v = this.#view(at, m.size);
     const read = (/** @type {number} */ off, /** @type {number} */ cap) => {

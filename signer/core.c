@@ -35,6 +35,7 @@ static size_t msg_len;
 static int msg_reviewed;
 static ms_wallet_t wallet; /* the registered multisig, with ours its key that the seed re-derives */
 static int wallet_ours = -1, wallet_ours2 = -1; /* ours2: an or_d's other key of ours, on the recovery path */
+static int wallet_watch; /* registered by core_multisig_watch: its addresses only, never its change or inputs */
 static uint8_t host_nonce[PLAN_MAX_INPUTS][32], host_nonce_set[PLAN_MAX_INPUTS];
 static uint8_t nonce_points[PLAN_MAX_SIGS][33]; /* Q for each signature core_sign() made, zero without a host nonce */
 
@@ -922,7 +923,8 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
     return CORE_OK;
 }
 
-int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
+/* watch 0: our key must re-derive, for review and signing; 1: no seed needed, for core_multisig_address alone */
+static int multisig_register(const char *text, size_t len, int watch, core_multisig_t *out) {
     char stated[ADDRESS_MAX];
     uint8_t pub[33], spk[34] = {0x00, 32};
     plan_wscript_t ws;
@@ -931,11 +933,11 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
 
     core_multisig_unload();
     wipe(out, sizeof(*out));
-    if (!seed_loaded) return CORE_ERR_NO_SEED;
+    if (!watch && !seed_loaded) return CORE_ERR_NO_SEED;
     if (!ms_parse(text, len, network == CORE_TESTNET, &wallet, stated)) return CORE_ERR_FORMAT;
     /* Ours is a key the seed re-derives at its origin, chain code and all: one, or one on each path of an or_d. A
      * fingerprint that matches with another key is most likely the wrong passphrase */
-    for (unsigned int i = 0; i < wallet.n; i++) {
+    for (unsigned int i = 0; !watch && i < wallet.n; i++) {
         const ms_key_t *k = &wallet.keys[i];
         if (k->fingerprint != master_fp) continue;
         if (ours2 >= 0 || (ours >= 0 && (!(wallet.kind & MS_OR_D) || ours >= wallet.primary || i < wallet.primary)) ||
@@ -944,7 +946,7 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
             goto done;
         *(ours < 0 ? &ours : &ours2) = (int)i;
     }
-    if (ours < 0 || !ms_wscript(&wallet, 0, 0, &ws)) goto done;
+    if ((!watch && ours < 0) || !ms_wscript(&wallet, 0, 0, &ws)) goto done;
     sha256(ws.bytes, ws.len, spk + 2);
     if (!address_encode(spk, sizeof(spk), network == CORE_TESTNET, out->receive)) goto done;
     if (stated[0] && strcmp(stated, out->receive)) goto done; /* the coordinator derived some other wallet */
@@ -952,8 +954,9 @@ int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
     out->threshold = wallet.threshold, out->n = wallet.n, out->ours = (uint8_t)ours;
     out->kind = wallet.kind, out->lock = wallet.lock, out->primary = wallet.primary,
     out->threshold2 = wallet.threshold2, out->ours2 = (uint8_t)(ours2 < 0 ? 0xff : ours2);
+    if (watch) out->ours = 0xff;
     for (unsigned int i = 0; i < wallet.n; i++) out->fingerprints[i] = wallet.keys[i].fingerprint;
-    wallet_ours = ours, wallet_ours2 = ours2;
+    wallet_ours = ours, wallet_ours2 = ours2, wallet_watch = watch;
     rc = CORE_OK;
 done:
     wipe(&node, sizeof(node));
@@ -961,12 +964,20 @@ done:
     return rc;
 }
 
+int core_multisig_load(const char *text, size_t len, core_multisig_t *out) {
+    return multisig_register(text, len, 0, out);
+}
+
+int core_multisig_watch(const char *text, size_t len, core_multisig_t *out) {
+    return multisig_register(text, len, 1, out);
+}
+
 int core_multisig_address(uint32_t chain, uint32_t index, char out[ADDRESS_MAX]) {
     uint8_t spk[34] = {0x00, 32};
     plan_wscript_t ws;
 
     out[0] = 0;
-    if (wallet_ours < 0) return CORE_ERR_WALLET;
+    if (wallet_ours < 0 && !wallet_watch) return CORE_ERR_WALLET;
     if (chain > 1 || index >= MAX_ADDRESS_INDEX) return CORE_ERR_FORMAT;
     if (!ms_wscript(&wallet, chain, index, &ws)) return CORE_ERR_CRYPTO;
     sha256(ws.bytes, ws.len, spk + 2);
@@ -977,7 +988,7 @@ int core_multisig_find_address(const char *addr, size_t len, uint32_t count) {
     char want[ADDRESS_MAX], got[ADDRESS_MAX];
     int upper = 0, lower = 0, other = 0, rc = -CORE_ERR_NOT_FOUND;
 
-    if (wallet_ours < 0) return -CORE_ERR_WALLET;
+    if (wallet_ours < 0 && !wallet_watch) return -CORE_ERR_WALLET;
     if (len < 4 || len >= ADDRESS_MAX || !count || count > MAX_ADDRESS_INDEX) return -CORE_ERR_FORMAT;
     for (size_t i = 0; i < len;
          i++) { /* BIP173: all upper case, as a QR's alphanumeric mode carries it, or all lower */
@@ -1011,7 +1022,7 @@ int core_multisig_load_cbor(const uint8_t *cbor, size_t len, core_multisig_t *ou
 
 void core_multisig_unload(void) {
     wipe(&wallet, sizeof(wallet));
-    wallet_ours = wallet_ours2 = -1;
+    wallet_ours = wallet_ours2 = -1, wallet_watch = 0;
 }
 
 /* crypto-account: the master fingerprint and, for the account, sh(wpkh()), wpkh(), tr() and the BIP48 key as

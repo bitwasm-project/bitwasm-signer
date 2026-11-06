@@ -320,6 +320,23 @@ export class Signer {
         receive: string;
         descriptor: string;
     };
+    /** The same wallet as multisigLoad() reads, with no seed needed, for multisigAddress() and multisigFindAddress()
+     *  alone: review and signing go on as if none were registered, and ours is 255. */
+    /** @param {string | Uint8Array} text */
+    multisigWatch(text: string | Uint8Array): {
+        kind: string;
+        threshold: number;
+        ours: number;
+        ours2: number;
+        primary: number;
+        threshold2: number;
+        recovery: string;
+        older: number;
+        after: number;
+        fingerprints: string[];
+        receive: string;
+        descriptor: string;
+    };
     multisigUnload(): void;
     /** The registered multisig's address at chain 0 (receive) or 1 (change) and index below 100000. */
     /** @param {{ chain?: number, index?: number }} [opts] */
@@ -395,6 +412,7 @@ export type SignerExports = {
     signer_multisig_output: () => number;
     signer_multisig_load: (len: number) => number;
     signer_multisig_load_cbor: (len: number) => number;
+    signer_multisig_watch: (len: number) => number;
     signer_multisig_unload: () => void;
     signer_multisig_address: (chain: number, index: number) => number;
     signer_multisig_find_address: (len: number, count: number) => number;

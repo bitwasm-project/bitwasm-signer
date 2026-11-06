@@ -509,6 +509,28 @@ int main(void) {
     CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "unloading the seed unloads the wallet");
     CHECK(load(DESC) == CORE_ERR_NO_SEED, "no seed, no wallet");
 
+    /* Watching needs no seed: the addresses, but no change or inputs, as if no wallet were registered */
+    CHECK(core_multisig_watch(DESC, strlen(DESC), &ms) == CORE_OK && ms.ours == 0xff && !strcmp(ms.receive, RECEIVE0) &&
+              !strcmp(ms.descriptor, DESC "#" CHECKSUM),
+          "watched without a seed: Core's receive address and descriptor");
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, CHANGE0), "a watched wallet's change 0");
+    CHECK(core_multisig_find_address(UPPER0, strlen(UPPER0), 1) == 0, "and its receive 0 found");
+    CHECK(core_multisig_cbor(cbor, sizeof(cbor)) == -CORE_ERR_WALLET, "but no crypto-output, which says it is ours");
+    {
+        core_facts_t f;
+        CHECK(core_facts(&(plan_t){0}, &f) == CORE_ERR_NO_SEED, "and no review without a seed");
+    }
+    CHECK(core_load_seed(seed) && core_multisig_address(0, 0, addr) == CORE_ERR_WALLET,
+          "loading a seed forgets the watched wallet");
+    CHECK(core_multisig_watch(DESC, strlen(DESC), &ms) == CORE_OK && ms.ours == 0xff, "watched with a seed loaded too");
+    {
+        core_facts_t f;
+        CHECK(core_facts(&(plan_t){0}, &f) == CORE_OK && !f.wallet, "facts say no wallet is registered for review");
+    }
+    CHECK(load(DESC) == CORE_OK && ms.ours == 0 && core_multisig_address(0, 0, addr) == CORE_OK,
+          "loading replaces watching");
+    core_unload();
+
     CHECK(core_init(CORE_TESTNET) && core_load_seed(seed), "load testnet");
     CHECK(load(DESC) == CORE_ERR_FORMAT, "a mainnet xpub on testnet");
     CHECK(mainnet_cbor_len > 0 &&
