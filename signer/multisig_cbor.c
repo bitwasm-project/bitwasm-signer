@@ -224,17 +224,19 @@ int ms_cbor_descriptor(const uint8_t *cbor, size_t len, int testnet, char out[MS
     uint64_t n, field, v, key_count = 0;
     uint32_t seen = 0;
     int have_threshold = 0, have_keys = 0;
+    unsigned int major;
 
-    if (!tag(&r, 401) || !tag(&r, 407) || !map_start(&r, &n)) return 0;
+    /* 407 sortedmulti, 406 multi */
+    if (!tag(&r, 401) || !head(&r, &major, &v) || major != 6 || (v != 406 && v != 407) || !map_start(&r, &n)) return 0;
+    wallet.kind = v == 406 ? MS_MULTI : MS_SORTEDMULTI;
     for (uint64_t i = 0; i < n; i++) {
         if (!map_key(&r, &field, &seen)) return 0;
         if (field == 1) {
-            if (!uint(&r, &v) || v < 1 || v > MS_MAX_SORTED) return 0;
+            if (!uint(&r, &v) || v < 1 || v > MS_MAX_KEYS) return 0;
             wallet.threshold = (uint8_t)v;
             have_threshold = 1;
         } else if (field == 2) {
-            unsigned int major;
-            if (!head(&r, &major, &key_count) || major != 4 || key_count < 2 || key_count > MS_MAX_SORTED) return 0;
+            if (!head(&r, &major, &key_count) || major != 4 || key_count < 2 || key_count > MS_MAX_KEYS) return 0;
             for (unsigned int j = 0; j < key_count; j++)
                 if (!hdkey(&r, testnet, &wallet.keys[j])) return 0;
             wallet.n = (uint8_t)key_count;

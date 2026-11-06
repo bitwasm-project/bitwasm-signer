@@ -260,7 +260,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   P2.unload();
 }
 
-// --- BIP48 P2WSH multisig: signed only once the witness script is a multisig of at most three keys, hashes to
+// --- BIP48 P2WSH multisig: signed only once the witness script is a multisig of at most six keys, hashes to
 // the input's script and holds our key. Core signs the same PSBTs byte for byte: check-core-diff
 {
   const W = await Signer.load(signerWasm, pin);
@@ -453,6 +453,11 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
        r.owner[1] === OWNER.CHANGE && W.sign().length === (w.ours2 < 0 ? 1 : 2));
   }
   ok("a sortedmulti wallet says so", W.multisigLoad(`wsh(sortedmulti(2,${K0},${K1},${K2}))`).kind === "sortedmulti");
+  {
+    const m = W.multisigLoad(`wsh(multi(2,${K1},${K0},${K2}))`);
+    ok("a multi wallet says so and keeps its keys' order (Core's receive 0)", m.kind === "multi" && m.ours === 1 &&
+       m.receive === "bc1qp40943ackp4r0rlux4nunfgxrlg8rmp97gae53svywxut7thskwskjycjv");
+  }
   W.multisigUnload();
   {
     const v = planFor(`${root}parser/build/vectors/own_p2wsh_2of3_1in.psbt`, FP);

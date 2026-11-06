@@ -127,14 +127,14 @@ static unsigned int side(cur_t *c, int testnet, ms_wallet_t *w, int *pkh) {
     } else {
         if (!eat(c, "multi(") || !number(c, &m)) return 0;
         while (eat(c, ","))
-            if (w->n - start == MS_MAX_SORTED || !key_expr(c, testnet, &w->keys[w->n++])) return 0;
+            if (w->n - start == MS_MAX_SIDE || !key_expr(c, testnet, &w->keys[w->n++])) return 0;
         if (w->n - start < 2 || m < 1 || m > w->n - start) return 0;
     }
     return eat(c, ")") ? m : 0;
 }
 
-/* wsh(sortedmulti(k,KEY,...)) or wsh(or_d(X,and_v(v:Y,older(n)))) as ms_wallet_t describes it, and if there is
- * one, a checksum that has to hold */
+/* wsh(sortedmulti(k,KEY,...)), wsh(multi(k,KEY,...)) or wsh(or_d(X,and_v(v:Y,older(n)))) as ms_wallet_t describes it,
+ * and if there is one, a checksum that has to hold */
 static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
     size_t start = c->i;
     uint32_t k;
@@ -151,11 +151,14 @@ static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
         if (!number(c, &k) || !eat(c, "))))") || k < 1) return 0;
         w->threshold = (uint8_t)m, w->threshold2 = (uint8_t)m2, w->lock = k;
     } else {
-        if (!eat(c, "wsh(sortedmulti(") || !number(c, &k)) return 0;
+        if (!eat(c, "wsh(sortedmulti(")) {
+            if (!eat(c, "wsh(multi(")) return 0;
+            w->kind = MS_MULTI;
+        }
+        if (!number(c, &k)) return 0;
         for (w->n = 0; eat(c, ",");) {
             ms_key_t *key = &w->keys[w->n];
-            if (w->n == MS_MAX_SORTED || !key_expr(c, testnet, key) || key->child[0] != 0 || key->child[1] != 1)
-                return 0;
+            if (w->n == MS_MAX_KEYS || !key_expr(c, testnet, key) || key->child[0] != 0 || key->child[1] != 1) return 0;
             w->n++;
         }
         if (!eat(c, "))") || k < 1 || k > w->n) return 0;
@@ -223,7 +226,7 @@ static int setup_file(cur_t *c, int testnet, ms_wallet_t *w) {
             p2wsh = 1;
         } else {
             ms_key_t *k = &w->keys[w->n];
-            if (w->n == MS_MAX_SORTED || !at.depth || !hex_fp(&l, &k->fingerprint) || !eat(&l, ":")) return 0;
+            if (w->n == MS_MAX_KEYS || !at.depth || !hex_fp(&l, &k->fingerprint) || !eat(&l, ":")) return 0;
             while (eat(&l, " "));
             k->depth = at.depth;
             k->child[1] = 1;
@@ -390,7 +393,7 @@ size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]) {
         o = put(out, o, num);
         o = put(out, o, "))))");
     } else {
-        o = put(out, 0, "wsh(sortedmulti(");
+        o = put(out, 0, w->kind == MS_MULTI ? "wsh(multi(" : "wsh(sortedmulti(");
         decimal(w->threshold, num);
         o = put(out, o, num);
         for (unsigned int i = 0; i < w->n; i++) o = put_key(out, put(out, o, ","), &w->keys[i], testnet);

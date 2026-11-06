@@ -130,15 +130,21 @@ int core_message_sign(uint8_t sig[65]);
 
 int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB_MAX], char desc[CORE_DESC_MAX]);
 
-/* Registers a P2WSH sortedmulti wallet of at most three keys from a descriptor, a BSMS 1.0 record or a Coldcard
+/* Registers a P2WSH sortedmulti or multi wallet of at most six keys from a descriptor, a BSMS 1.0 record or a Coldcard
  * setup file, or wsh(or_d(X,and_v(v:Y,older(n)))) from its descriptor: X pk() or multi() of up to three keys, Y the
  * same or pkh(), and after(n) as well; the seed may hold a key on each path, one xpub under <0;1> and <2;3> too.
  * From then on its inputs are signed only when their witness script is the wallet's, and its outputs at our
  * keys' paths are shown as change. Unloading the seed unloads it too */
 #define CORE_MULTISIG_DESC_MAX 1024
 #define CORE_MULTISIG_MAX_KEYS 6
-/* kind is SORTEDMULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock) */
-enum { CORE_WALLET_SORTEDMULTI = 0, CORE_WALLET_OR_D = 1, CORE_WALLET_OR_D_PK = 2, CORE_WALLET_OR_D_AFTER = 4 };
+/* kind is SORTEDMULTI, MULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock) */
+enum {
+    CORE_WALLET_SORTEDMULTI = 0,
+    CORE_WALLET_OR_D = 1,
+    CORE_WALLET_OR_D_PK = 2,
+    CORE_WALLET_OR_D_AFTER = 4,
+    CORE_WALLET_MULTI = 8
+};
 typedef struct {
     uint8_t threshold, n, ours; /* ours indexes fingerprints[]; for OR_D the primary's threshold, its keys first */
     uint8_t kind;               /* CORE_WALLET_* */

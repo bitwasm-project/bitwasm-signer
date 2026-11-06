@@ -498,14 +498,14 @@ public final class Signer {
         )
     }
 
-    /// Registers a P2WSH sortedmulti wallet of at most three keys, from a descriptor, a BSMS 1.0 record or a
+    /// Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
     /// Coldcard setup file. Show what this returns, the receive address above all, before trusting it. Loading
     /// another seed unloads it.
     public func multisigLoad(_ text: [UInt8]) throws -> Multisig {
         try loadMultisig(text, stage: "multisigLoad", export: "signer_multisig_load")
     }
 
-    /// Registers a BIP48 sortedmulti wallet from its typed crypto-output CBOR.
+    /// Registers a BIP48 sortedmulti or multi wallet from its typed crypto-output CBOR.
     public func multisigLoadCbor(_ cbor: [UInt8]) throws -> Multisig {
         try loadMultisig(cbor, stage: "multisigLoadCbor", export: "signer_multisig_load_cbor")
     }

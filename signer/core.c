@@ -42,7 +42,7 @@ static uint8_t nonce_points[PLAN_MAX_SIGS][33]; /* Q for each signature core_sig
 enum { SPK_OTHER, SPK_P2WPKH, SPK_P2SH_P2WPKH, SPK_P2TR, SPK_P2WSH };
 _Static_assert(MS_MAX_KEYS == CORE_MULTISIG_MAX_KEYS && MS_SORTEDMULTI == CORE_WALLET_SORTEDMULTI &&
                    MS_OR_D == CORE_WALLET_OR_D && MS_OR_D_PK == CORE_WALLET_OR_D_PK &&
-                   MS_OR_D_AFTER == CORE_WALLET_OR_D_AFTER,
+                   MS_OR_D_AFTER == CORE_WALLET_OR_D_AFTER && MS_MULTI == CORE_WALLET_MULTI,
                "wallet kinds");
 
 static int spk_type(const plan_script_t *s) {
@@ -53,7 +53,8 @@ static int spk_type(const plan_script_t *s) {
     return SPK_OTHER;
 }
 
-/* OP_m, n distinct compressed keys, OP_n, OP_CHECKMULTISIG with 1 <= m <= n <= 3. Returns n, or 0 otherwise */
+/* OP_m, n distinct compressed keys, OP_n, OP_CHECKMULTISIG with 1 <= m <= n, n at most six as the plan holds.
+ * Returns n, or 0 otherwise */
 static unsigned int multisig_keys(const plan_wscript_t *w) {
     unsigned int n = w->len >= 3 ? (w->len - 3u) / 34u : 0, m = w->bytes[0] - 0x50u;
     if (n == 0 || w->len != 3 + 34 * n || m < 1 || m > n || w->bytes[w->len - 2] != 0x50 + n ||
@@ -71,8 +72,8 @@ static unsigned int multisig_keys(const plan_wscript_t *w) {
  * forms, keys appended to keys[*n]. Returns the bytes read, or 0 */
 static size_t read_check(const uint8_t *s, size_t len, int verify, const uint8_t *keys[], unsigned int *n) {
     unsigned int m = len ? s[0] - 0x50u : 0, k = 0;
-    size_t o = m >= 1 && m <= MS_MAX_SORTED ? 1 : 0;
-    while (o + 34 <= len && s[o] == 33 && (s[o + 1] == 2 || s[o + 1] == 3) && k < MS_MAX_SORTED)
+    size_t o = m >= 1 && m <= MS_MAX_SIDE ? 1 : 0;
+    while (o + 34 <= len && s[o] == 33 && (s[o + 1] == 2 || s[o + 1] == 3) && k < MS_MAX_SIDE)
         keys[*n + k++] = s + o + 1, o += 34;
     if (!k || (o == 1 + 34 * k) != (k > 1) || (k > 1 && (m > k || o + 2 > len || s[o++] != 0x50 + k))) return 0;
     if (o >= len || s[o++] != (k > 1 ? 0xae : 0xac) + verify) return 0;
@@ -1049,12 +1050,12 @@ int core_account_cbor(uint32_t account, uint8_t *out, size_t cap) {
     return c.n > cap ? -CORE_ERR_FORMAT : (int)c.n;
 }
 
-/* crypto-output for the registered wallet: wsh(sortedmulti()), the keys in the order the coordinator gave */
+/* crypto-output for the registered wallet: wsh(sortedmulti()) or wsh(multi()), the keys in the order given */
 int core_multisig_cbor(uint8_t *out, size_t cap) {
     cbor_t c = {out, 0, cap};
     if (wallet_ours < 0) return -CORE_ERR_WALLET;
-    if (wallet.kind != MS_SORTEDMULTI) return -CORE_ERR_FORMAT; /* BCR-2020-010 has no tag for a miniscript */
-    cbor_head(&c, CBOR_TAG, 401), cbor_head(&c, CBOR_TAG, 407);
+    if (wallet.kind & MS_OR_D) return -CORE_ERR_FORMAT; /* BCR-2020-010 has no tag for a miniscript */
+    cbor_head(&c, CBOR_TAG, 401), cbor_head(&c, CBOR_TAG, wallet.kind == MS_MULTI ? 406 : 407);
     cbor_head(&c, CBOR_MAP, 2);
     cbor_head(&c, CBOR_UINT, 1), cbor_head(&c, CBOR_UINT, wallet.threshold);
     cbor_head(&c, CBOR_UINT, 2), cbor_head(&c, CBOR_ARRAY, wallet.n);
