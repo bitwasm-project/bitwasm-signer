@@ -32,7 +32,7 @@ def multisig(path):
 
 
 # BIP48 P2WSH 2-of-3 with two cosigners from BIP39's other published vectors. m/48h/0h/1h/2h holds seven keys,
-# the three seeds at accounts 1 and 3 beside ours: a witness script too long for the plan, so not one we sign
+# the three seeds at accounts 1 and 3 beside ours, which plan version 4 has room to sign
 COSIGNERS = [bip32.HDKey.from_seed(hashlib.pbkdf2_hmac("sha512", m.encode(), b"mnemonic", 2048))
              for m in ("zoo " * 11 + "wrong",
                        "legal winner thank year wave sausage worth useful legal winner thank yellow",
@@ -72,7 +72,7 @@ def keypath(path):
 
 
 def wsh_expected(path):
-    return path is not None and path.startswith("m/48h/0h/0h")
+    return path is not None and path.startswith("m/48h")
 
 
 def build(name, inputs, outputs, cosigned=False):
@@ -85,9 +85,9 @@ def build(name, inputs, outputs, cosigned=False):
         vin.append(TransactionInput(ptx.txid(), vout, sequence=0xFFFFFFFD))
         exp_in.append({"prev_txid": bytes(reversed(ptx.txid())).hex(), "prev_vout": vout, "sequence": 0xFFFFFFFD,
                        "amount": amount, "spk": s.data.hex(),
-                       "key": keypath(path) if path and not path.startswith(("m/45h", "m/48h/0h/1h")) else None,
+                       "key": keypath(path) if path and not path.startswith("m/45h") else None,
                        "sighash_type": (0 if path.startswith("m/86h") else 1)
-                       if path and not path.startswith(("m/45h", "m/48h/0h/1h")) else 0,
+                       if path and not path.startswith("m/45h") else 0,
                        "wscript": wsh_script(path).data.hex() if wsh_expected(path) else "",
                        "has_prevtx": nwu})
     vout = []

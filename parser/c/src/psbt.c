@@ -324,7 +324,7 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
         in->key.fingerprint = fp;
         memcpy(in->key.path, c->path, sizeof(c->path));
         if (ws && is_p2wsh(&in->spk)) {
-            plan.wscripts[idx].len = (uint8_t)ws->vlen;
+            plan.wscripts[idx].len = (uint16_t)ws->vlen;
             memcpy(plan.wscripts[idx].bytes, ws->val, ws->vlen);
         }
     } else {

@@ -13,7 +13,7 @@ import WasmKit
 // What the host decodes. signer/tests/layout.c prints these from the structs themselves
 // and `make check-layout` fails if this table drifts from them.
 private enum L {
-    static let planSize = 8536, planNInputs = 16, planNOutputs = 17
+    static let planSize = 13368, planNInputs = 16, planNOutputs = 17
 
     static let rvSize = 64
     static let rvTotalIn = 0, rvTotalOut = 8, rvFee = 16
@@ -31,9 +31,9 @@ private enum L {
     static let msgSize = 2125
     static let msgAddress = 0, msgTextKind = 75, msgText = 76, msgTextCap = 2049
 
-    static let msSize = 1136
+    static let msSize = 2452
     static let msThreshold = 0, msN = 1, msOurs = 2, msFingerprints = 4
-    static let msReceive = 28, msReceiveCap = 75, msDescriptor = 103, msDescriptorCap = 1024
+    static let msReceive = 64, msReceiveCap = 75, msDescriptor = 139, msDescriptorCap = 2304
 
     static let maxInputs = 16, maxOutputs = 16
     static let xpubMax = 120, descMax = 180, addressMax = 75, prevtxMax = 32768
@@ -512,7 +512,7 @@ public final class Signer {
         return try cstr(Int(try call("signer_xpub_output")), L.xpubMax)
     }
 
-    /// Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
+    /// Registers a P2WSH sortedmulti or multi wallet of at most 15 keys, from a descriptor, a BSMS 1.0 record or a
     /// Coldcard setup file. Show what this returns, the receive address above all, before trusting it. Loading
     /// another seed unloads it.
     public func multisigLoad(_ text: [UInt8]) throws -> Multisig {

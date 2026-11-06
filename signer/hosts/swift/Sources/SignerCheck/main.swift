@@ -8,7 +8,7 @@ import Foundation
 import WasmKit
 import WasmSigner
 
-let planSize = 8536
+let planSize = 13368
 var pass = 0, fail = 0
 
 func check<T: Equatable>(_ what: String, _ got: T, _ want: T) {
@@ -241,7 +241,7 @@ do {
 
 // --- an oversized mnemonic is rejected before anything is written
 do {
-    var big = [UInt8](repeating: 0x78, count: 1100), none: [UInt8] = []
+    var big = [UInt8](repeating: 0x78, count: 3100), none: [UInt8] = []
     try s.seedFromMnemonic(&big, passphrase: &none)
     ok("an oversized mnemonic is refused", false)
 } catch {
@@ -382,7 +382,7 @@ do {
         }
     }
     do {
-        var big = [UInt8](repeating: 0, count: 800), pw = [UInt8](repeating: 0x78, count: 300)
+        var big = [UInt8](repeating: 0, count: 2800), pw = [UInt8](repeating: 0x78, count: 300)
         try q.seedFromSeedQR(&big, passphrase: &pw)
         ok("an oversized SeedQR is refused", false)
     } catch {

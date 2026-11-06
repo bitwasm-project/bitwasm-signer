@@ -1,4 +1,4 @@
-// Spends or_d wallets on regtest with signer.wasm's signature, to show it satisfies the script and not only
+// Spends or_d wallets and a 15-key multisig on regtest with signer.wasm's signature, to show it satisfies the script and not only
 // matches Core's bytes. Core is given the cosigners' keys, never ours: descriptorprocesspsbt fills the PSBT,
 // parser.wasm and signer.wasm add our signature, Core adds the cosigners' and finalizes. Each case is tried once before its
 // timelock, where it has to be refused, and once after, where it has to be mined.
@@ -25,6 +25,18 @@ const [C0, C0A, C1, C1A, C2] = [
   "[b8688df1/48h/0h/1h/2h]tprv8hqwZ88DadzdHutXRukFN39GZRMstZcWMFcW8HSFz3ikES5EQ8XRdNPn3mJr3PGzutCmXVpuoe9ep8vzY7fjx5QZKxnuWbpusGEBRLQSh4s",
   "[28645006/48h/0h/0h/2h]tprv8hTpZCXssDTKo72fFyLNBfHdPz3oSChVDbCFXLnoeFv6uqv7apPsEMdxeUd7KbZFvMeeX4Eowjy26sWjd7XeVNa1UA3M3BzzGZNrfroyR6L",
 ];
+// Nine more at m/48'/0'/0'/2', from BIP39's test vectors, for 15 keys
+const MORE = [
+  "[b760aecd/48h/0h/0h/2h]tprv8j38c5WaDmndJtTL95zLhEkPBLsWQdenijQVBuXMXBmdK2t9S3M5XwFwtTGT297u74DVbBTNGWDdnBZBi9tzgb8RjgRZtJh5XFr51GrsMeW",
+  "[61796c57/48h/0h/0h/2h]tprv8ibFX8K1neaYVjQyUer4esutxwnG3CY2apxkeXueYYjQoBMuuyVSJMhduBkqcRZW7bxfZG4vXNwemar9v2qZZv1VRxudFmoriKXwZ6gt6TG",
+  "[8a682d68/48h/0h/0h/2h]tprv8ijH15VfS7yirqB8sFhxhJiVTCGwXbdktqsLLopWhRvWa4b7aCH6bRJyZ4KKUzTp9YcHHh5aCtdD4VhRwKo4EGqDckfrjrcgKhyebE5TaWc",
+  "[dd1fad4d/48h/0h/0h/2h]tprv8iMVyqbjxMFpkVwTaJKsR6bgTgLampoQZW8X5wM4jBNZqsk8g6g6Tc8qQ9vjguqqTxRwC1DwpvpN2QumVBMV83AefGRV36dTzDNavzLq4de",
+  "[bc2b7c36/48h/0h/0h/2h]tprv8hcuZfSnLWyFeUSZnxF4hMrk1Jb9NdehhPs2kPGPNHdXznVstBbg7vvNS5qsHGJLzJGwt6mgGrxb8MTnf9uLsDjzYV1RySUtsgrRaf5Xu1e",
+  "[f57f296d/48h/0h/0h/2h]tprv8j2ctQa3c215KHaAjufxKjYgbHLMrobYGkmZYSeNBhZfKtyUwLWfhhDQHQYZojZh8LCZQfH7SnST6KNrhhzzpywoiMEM6NSqB4vySyKSAbx",
+  "[86d722c6/48h/0h/0h/2h]tprv8hEHXsDnD7kZPA8XLkRydKoxvoWEt25mYzwUosjJJN7FPZSkZzByrEvWv3KyNx86g2zeQFZsB7LrwyC75E2JT59BXLbAaGk4GbbUEkFBn89",
+  "[5c9e228d/48h/0h/0h/2h]tprv8iMrfZQNNqF9S7UCaZJf4uM9w9bL8b4hPxsZxNHcdzwRWUhmKh61ybUY1LEkJHEBPZePT7LDtqfAYDPfZFjEjN93WpXr8HBfsn9EbLvYP7V",
+  "[5436d724/48h/0h/0h/2h]tprv8hnjdQCwuLZyZ1K6HkbvjVXm632pQW5a4T5Wtw1pU2tGPRU1FbeTWxR948RBbw7UPhqyjwyCpeLQbdRg13HnPQk9WwDxKcK3hRKkuyXQ3KK",
+];
 const pub = (k) => json("getdescriptorinfo", `pk(${k}/0/*)`).descriptor.replace(/^pk\((.*)\/0\/\*\)#.*$/, "$1");
 const withChecksum = (d) => `${d}#${json("getdescriptorinfo", d).checksum}`;
 
@@ -43,10 +55,13 @@ const CASES = [
   // A reused signer: registered, it signs with both keys, and the recovery path needs the second one
   ["ours on both paths, spent on the primary path", "or_d(multi(2,{o},{c0},{c1}),and_v(v:multi(2,{o2},{c0a},{c1a}),older(10)))",
    ["c0"], null],
+  // 513 bytes of witness script, whose scriptCode takes a three-byte compact size
+  ["an 8-of-15 sortedmulti", `sortedmulti(8,{o},{c0},{c0a},{c1},{c1a},{c2},${MORE.map((_, i) => `{m${i}}`).join(",")})`,
+   ["c0", "c0a", "c1", "c1a", "c2", "m0", "m1"], null],
   ["ours on both paths, spent on the recovery path", "or_d(multi(2,{o},{c0},{c1}),and_v(v:multi(2,{o2},{c0a},{c1a}),older(10)))",
    ["c0a"], { older: 10 }],
 ];
-const COSIGNERS = { c0: C0, c0a: C0A, c1: C1, c1a: C1A, c2: C2 };
+const COSIGNERS = { c0: C0, c0a: C0A, c1: C1, c1a: C1A, c2: C2, ...Object.fromEntries(MORE.map((k, i) => [`m${i}`, k])) };
 
 const P = (await WebAssembly.instantiate(readFileSync(parserPath), {})).instance.exports;
 const signerWasm = readFileSync(signerPath);

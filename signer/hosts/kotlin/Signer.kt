@@ -14,7 +14,7 @@ import com.dylibso.chicory.wasm.Parser as WasmParser
 // Layout of what the host decodes. signer/tests/layout.c prints these from the structs
 // themselves and `make check-layout` fails if this table drifts from them.
 private object L {
-    const val PLAN_SIZE = 8536
+    const val PLAN_SIZE = 13368
     const val PLAN_N_INPUTS = 16
     const val PLAN_N_OUTPUTS = 17
 
@@ -34,9 +34,9 @@ private object L {
     const val MSG_SIZE = 2125
     const val MSG_ADDRESS = 0; const val MSG_TEXT_KIND = 75; const val MSG_TEXT = 76; const val MSG_TEXT_CAP = 2049
 
-    const val MS_SIZE = 1136
+    const val MS_SIZE = 2452
     const val MS_THRESHOLD = 0; const val MS_N = 1; const val MS_OURS = 2; const val MS_FINGERPRINTS = 4
-    const val MS_RECEIVE = 28; const val MS_RECEIVE_CAP = 75; const val MS_DESCRIPTOR = 103; const val MS_DESCRIPTOR_CAP = 1024
+    const val MS_RECEIVE = 64; const val MS_RECEIVE_CAP = 75; const val MS_DESCRIPTOR = 139; const val MS_DESCRIPTOR_CAP = 2304
 
     const val MAX_INPUTS = 16; const val MAX_OUTPUTS = 16
     const val XPUB_MAX = 120; const val DESC_MAX = 180; const val ADDRESS_MAX = 75; const val PREVTX_MAX = 32768
@@ -457,7 +457,7 @@ class Signer(signerWasm: ByteArray, sha256: String) {
     }
 
     /**
-     * Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
+     * Registers a P2WSH sortedmulti or multi wallet of at most 15 keys, from a descriptor, a BSMS 1.0 record or a
      * Coldcard setup file. Show what this returns, the receive address above all, before trusting it. Loading
      * another seed unloads it.
      */
