@@ -98,14 +98,18 @@ export class Parser {
     nonces(): Uint8Array<ArrayBuffer>;
     /**
      * Insert signatures and return the signed PSBT. A signature's anti-exfil `point` goes in as a proprietary field.
+     * `trimmed` returns only the unsigned transaction and the signatures, which a coordinator merges back.
      * @param {{input: number, pubkey: Uint8Array, sig: Uint8Array, point?: Uint8Array | null}[]} sigs
+     * @param {{trimmed?: boolean}} [options]
      */
     finalize(sigs: {
         input: number;
         pubkey: Uint8Array;
         sig: Uint8Array;
         point?: Uint8Array | null;
-    }[]): Uint8Array<ArrayBuffer>;
+    }[], { trimmed }?: {
+        trimmed?: boolean;
+    }): Uint8Array<ArrayBuffer>;
     #private;
 }
 /** What the module read out of the PSBT. Every field is a claim until the host checks it. */
@@ -141,6 +145,7 @@ export type ParserExports = {
     parser_prevtx_off: (i: number) => number;
     parser_prevtx_len: (i: number) => number;
     parser_finalize: (n: number) => number;
+    parser_finalize_trimmed: (n: number) => number;
     parser_nonces: () => number;
     parser_nonce_points: () => number;
     parser_ur_reset: () => void;

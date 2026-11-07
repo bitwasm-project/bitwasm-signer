@@ -1,5 +1,5 @@
 // Compares the C and the Rust parser through the real ABI: the whole 6,712-byte plan, byte for
-// byte, plus the prevtx offsets and the signed PSBT that finalize produces.
+// byte, plus the prevtx offsets and the signed PSBTs that finalize and finalize_trimmed produce.
 //
 // The plan is the interface, so comparing it whole is comparing everything a signer would see. A
 // field this does not know about cannot hide a difference.
@@ -37,7 +37,7 @@ function parse(e, bytes, fp) {
 }
 
 /** finalize with fabricated signatures: the insertion is what is being compared, not the crypto. */
-function finalize(e, plan) {
+function finalize(e, plan, fn = "parser_finalize") {
   const sigs = [];
   const mem = new Uint8Array(e.memory.buffer);
   const planBytes = mem.slice(e.parser_plan(), e.parser_plan() + PLAN);
@@ -64,7 +64,7 @@ function finalize(e, plan) {
     buf.set(sig, at + 35);
   });
   new Uint8Array(e.memory.buffer).set(buf, e.parser_sigs());
-  const n = e.parser_finalize(sigs.length);
+  const n = e[fn](sigs.length);
   if (n <= 0) return `rc=${n}`;
   return hex(new Uint8Array(e.memory.buffer).slice(e.parser_output(), e.parser_output() + n));
 }
@@ -80,6 +80,8 @@ for (const f of files) {
       cmp(`${f} fp=${fp.toString(16)} plan`, c.plan, r.plan);
       cmp(`${f} fp=${fp.toString(16)} prevtx`, c.prev, r.prev);
       cmp(`${f} fp=${fp.toString(16)} finalize`, finalize(C, c.plan), finalize(R, r.plan));
+      cmp(`${f} fp=${fp.toString(16)} trimmed`, finalize(C, c.plan, "parser_finalize_trimmed"),
+          finalize(R, r.plan, "parser_finalize_trimmed"));
     }
   }
 }

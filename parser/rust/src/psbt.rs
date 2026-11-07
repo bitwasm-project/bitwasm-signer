@@ -149,6 +149,8 @@ pub struct Parsed {
     pub prevtx_off: [u32; plan::MAX_INPUTS],
     pub prevtx_len: [u32; plan::MAX_INPUTS],
     pub in_map_end: [usize; plan::MAX_INPUTS],
+    /// Where the unsigned transaction's bytes are in the input buffer, for the trimmed output.
+    pub utx: (usize, usize),
     /// Per input, 1 then the coordinator's n, or all zero.
     pub nonces: [[u8; 33]; plan::MAX_INPUTS],
 }
@@ -159,11 +161,12 @@ impl Parsed {
         prevtx_off: [0; plan::MAX_INPUTS],
         prevtx_len: [0; plan::MAX_INPUTS],
         in_map_end: [0; plan::MAX_INPUTS],
+        utx: (0, 0),
         nonces: [[0; 33]; plan::MAX_INPUTS],
     };
 }
 
-fn parse_global(r: &mut Reader, out: &mut Parsed) -> Res {
+fn parse_global(r: &mut Reader, in_buf_base: usize, out: &mut Parsed) -> Res {
     let mut kv: [Option<Kv>; MAX_KV] = [const { None }; MAX_KV];
     let (n, _end) = read_map(r, &mut kv)?;
     let entries = |i: usize| kv[i].as_ref().unwrap();
@@ -259,6 +262,7 @@ fn parse_global(r: &mut Reader, out: &mut Parsed) -> Res {
                 out.plan.locktime = info.locktime;
                 out.plan.n_inputs = info.n_inputs as u8;
                 out.plan.n_outputs = info.n_outputs as u8;
+                out.utx = (e.val.as_ptr() as usize - in_buf_base, e.val.len());
                 have_tx = true;
             }
             0x01 => {
@@ -596,7 +600,7 @@ pub fn parse(raw: &[u8], fp: u32, in_buf_base: usize, out: &mut Parsed) -> Res {
     if raw.len() < 5 || r.take(5) != Some(&MAGIC[..]) {
         return Err(Err::Magic);
     }
-    parse_global(&mut r, out)?;
+    parse_global(&mut r, in_buf_base, out)?;
     for i in 0..out.plan.n_inputs as usize {
         parse_input(&mut r, i, fp, in_buf_base, out)?;
     }

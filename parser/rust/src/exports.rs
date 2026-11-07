@@ -139,35 +139,29 @@ fn put_sig(dst: &mut [u8], mut o: usize, p2tr: bool, s: &Sig, point: &[u8; 33]) 
     o
 }
 
-/// Called after the host writes `n` signatures to `parser_sigs()`. Returns the signed PSBT's length,
-/// or a negative error.
-#[no_mangle]
-pub extern "C" fn parser_finalize(n: u32) -> i32 {
-    let n = n as usize;
+/// Which of the `n` signatures go to which input, at most two and the second only for a P2WSH input
+/// and another key, rejecting one for an input this module never offered to sign. None if any is refused.
+fn pick_sigs(n: usize) -> Option<[[usize; 2]; plan::MAX_INPUTS]> {
     let parsed: &Parsed = unsafe { &*(&raw const PARSED) };
     let sigs: &[Sig] = unsafe { &*(&raw const SIGS) };
     let points: &[[u8; 33]] = unsafe { &*(&raw const POINTS) };
-    let in_len = unsafe { IN_LEN };
     if !unsafe { IS_PARSED } || n > plan::MAX_SIGS {
-        return -(psbt::Err::Sig as i32);
+        return None;
     }
-
-    // Which signatures belong to which input, at most two and the second only for a P2WSH input and
-    // another key, rejecting one for an input this module never offered to sign
     let mut by_input = [[usize::MAX; 2]; plan::MAX_INPUTS];
     for k in 0..n {
         let s = &sigs[k];
         let idx = s.input as usize;
         if idx >= parsed.plan.n_inputs as usize || by_input[idx][1] != usize::MAX {
-            return -(psbt::Err::Sig as i32);
+            return None;
         }
         let in_ = &parsed.plan.inputs[idx];
         if in_.key.depth == 0 {
-            return -(psbt::Err::Sig as i32);
+            return None;
         }
         let first = by_input[idx][0];
         if first != usize::MAX && (!in_.spk.is_p2wsh() || sigs[first].pubkey == s.pubkey) {
-            return -(psbt::Err::Sig as i32);
+            return None;
         }
         let bad = if !in_.spk.is_p2tr() {
             (s.pubkey[0] != 2 && s.pubkey[0] != 3) || s.sig_len < 9 || s.sig_len > 73
@@ -175,11 +169,24 @@ pub extern "C" fn parser_finalize(n: u32) -> i32 {
             s.pubkey[0] != 0 || (s.sig_len != 64 && s.sig_len != 65)
         };
         if bad || (points[k] != [0; 33] && points[k][0] != 2 && points[k][0] != 3) {
-            return -(psbt::Err::Sig as i32);
+            return None;
         }
         by_input[idx][(first != usize::MAX) as usize] = k;
     }
+    Some(by_input)
+}
 
+/// Called after the host writes `n` signatures to `parser_sigs()`. Returns the signed PSBT's length,
+/// or a negative error.
+#[no_mangle]
+pub extern "C" fn parser_finalize(n: u32) -> i32 {
+    let Some(by_input) = pick_sigs(n as usize) else {
+        return -(psbt::Err::Sig as i32);
+    };
+    let parsed: &Parsed = unsafe { &*(&raw const PARSED) };
+    let sigs: &[Sig] = unsafe { &*(&raw const SIGS) };
+    let points: &[[u8; 33]] = unsafe { &*(&raw const POINTS) };
+    let in_len = unsafe { IN_LEN };
     let src: &[u8] = unsafe { core::slice::from_raw_parts((&raw const PSBT_IN) as *const u8, in_len) };
     let dst: &mut [u8] =
         unsafe { core::slice::from_raw_parts_mut((&raw mut PSBT_OUT) as *mut u8, PSBT_OUT_MAX) };
@@ -201,6 +208,48 @@ pub extern "C" fn parser_finalize(n: u32) -> i32 {
     dst[o..o + in_len - prev].copy_from_slice(&src[prev..in_len]);
     o += in_len - prev;
     o as i32
+}
+
+/// As `parser_finalize`, but only what a coordinator merges back, as SeedSigner trims: the unsigned
+/// transaction, each input's signatures and anti-exfil Qs, and empty output maps.
+#[no_mangle]
+pub extern "C" fn parser_finalize_trimmed(n: u32) -> i32 {
+    let Some(by_input) = pick_sigs(n as usize) else {
+        return -(psbt::Err::Sig as i32);
+    };
+    let parsed: &Parsed = unsafe { &*(&raw const PARSED) };
+    let sigs: &[Sig] = unsafe { &*(&raw const SIGS) };
+    let points: &[[u8; 33]] = unsafe { &*(&raw const POINTS) };
+    let in_len = unsafe { IN_LEN };
+    let src: &[u8] = unsafe { core::slice::from_raw_parts((&raw const PSBT_IN) as *const u8, in_len) };
+    let dst: &mut [u8] =
+        unsafe { core::slice::from_raw_parts_mut((&raw mut PSBT_OUT) as *mut u8, PSBT_OUT_MAX) };
+
+    let (at, len) = parsed.utx;
+    dst[..7].copy_from_slice(b"psbt\xff\x01\x00");
+    let mut o = 7usize;
+    if len < 0xfd {
+        dst[o] = len as u8;
+        o += 1;
+    } else {
+        // below PSBT_MAX, so two bytes
+        dst[o..o + 3].copy_from_slice(&[0xfd, len as u8, (len >> 8) as u8]);
+        o += 3;
+    }
+    dst[o..o + len].copy_from_slice(&src[at..at + len]);
+    o += len;
+    dst[o] = 0;
+    o += 1;
+    for i in 0..parsed.plan.n_inputs as usize {
+        for &k in by_input[i].iter().filter(|&&k| k != usize::MAX) {
+            o = put_sig(dst, o, parsed.plan.inputs[i].spk.is_p2tr(), &sigs[k], &points[k]);
+        }
+        dst[o] = 0;
+        o += 1;
+    }
+    let n_out = parsed.plan.n_outputs as usize;
+    dst[o..o + n_out].fill(0);
+    (o + n_out) as i32
 }
 
 // --- UR (animated QR) ---

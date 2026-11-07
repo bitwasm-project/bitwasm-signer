@@ -79,6 +79,7 @@ parser_prevtx_off(i)  -> offset/length of input i's non_witness_utxo inside the 
 parser_prevtx_len(i)
 parser_sigs()         -> address of plan_sig_t[16] for the host to fill
 parser_finalize(n)    -> length of the signed PSBT, or a negative error
+parser_finalize_trimmed(n) -> the same, but only the unsigned transaction and the signatures
 parser_output()       -> address of the signed PSBT
 ```
 
