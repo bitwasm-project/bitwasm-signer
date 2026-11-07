@@ -132,7 +132,7 @@ class Parser {
     this.write(raw, this.call("parser_input"));
     return this.call("parser_ur_receive", raw.length);
   }
-  finalize(sigs) {
+  finalize(sigs, fn = "parser_finalize") {
     if (sigs.length) {
       const buf = new Uint8Array(sigs.length * 108);
       sigs.forEach(([i, pub, sig], k) => {
@@ -144,12 +144,24 @@ class Parser {
       });
       this.write(buf, this.call("parser_sigs"));
     }
-    const n = this.call("parser_finalize", sigs.length);
+    const n = this.call(fn, sigs.length);
     return [n, n > 0 ? this.read(this.call("parser_output"), n) : new Uint8Array(0)];
   }
 }
 
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
+const compact = (b, o) => b[o] < 0xfd ? [b[o], o + 1] : [b.readUInt16LE(o + 1), o + 3];
+/** The global map's unsigned-transaction record, as its bytes in the PSBT */
+function globalTxRecord(raw) {
+  let o = 5;
+  for (;;) {
+    const at = o;
+    const [klen, k] = compact(raw, o);
+    const [vlen, v] = compact(raw, k + klen);
+    o = v + vlen;
+    if (klen === 1 && raw[k] === 0) return raw.subarray(at, o);
+  }
+}
 const vectorFiles = (pattern) =>
   readdirSync(VEC).filter((f) => pattern.test(f)).sort().map((f) => join(VEC, f));
 
@@ -259,6 +271,13 @@ for (const path of vectorFiles(/^own_.*\.psbt$/)) {
     if (at >= 0) stripped = Buffer.concat([stripped.subarray(0, at), stripped.subarray(at + rec.length)]);
   }
   check(stripped.equals(raw), `${name}: nothing but the signatures changed`);
+
+  // Trimmed: the unsigned transaction's record, then per input only its signatures, then empty output maps
+  const [tn, trimmed] = p.finalize(sigs, "parser_finalize_trimmed");
+  const utx = globalTxRecord(raw);
+  const perInput = plan.inputs.map((_, i) => Buffer.concat([...records.filter((_, k) => sigs[k][0] === i), Buffer.from([0])]));
+  const want = Buffer.concat([raw.subarray(0, 5), utx, Buffer.from([0]), ...perInput, Buffer.alloc(plan.outputs.length)]);
+  check(tn === want.length && Buffer.from(trimmed).equals(want), `${name}: trimmed`);
 
   // failures: a signature for a foreign input, the same input twice, too many, a bad pubkey prefix
   const unsigned = exp.inputs.map((w, i) => (w.key === null ? i : -1)).filter((i) => i >= 0);

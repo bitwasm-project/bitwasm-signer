@@ -70,7 +70,10 @@ async function signHere(psbt, registered) {
     mem().fill(0, P.parser_nonce_points(), P.parser_nonce_points() + 32 * 33);
     const len = P.parser_finalize(sigs.length);
     if (len < 0) throw new Error(`parser_finalize: ${len}`);
-    return { psbt: mem().slice(P.parser_output(), P.parser_output() + len), n: sigs.length };
+    const psbt = mem().slice(P.parser_output(), P.parser_output() + len);
+    const tlen = P.parser_finalize_trimmed(sigs.length);
+    if (tlen < 0) throw new Error(`parser_finalize_trimmed: ${tlen}`);
+    return { psbt, trimmed: mem().slice(P.parser_output(), P.parser_output() + tlen), n: sigs.length };
   } finally {
     S.unload();
   }
@@ -108,6 +111,10 @@ for (const [name, policy, signs, lock] of CASES) {
   const both = withCore(Buffer.from(ours.psbt).toString("base64"), true), alone = withCore(filled, true);
   const problems = [];
   if (ours.n !== (registered ? 2 : 1)) problems.push(`signer.wasm made ${ours.n} signatures`);
+  // the trimmed PSBT, merged back by Core, is the full one
+  const b64 = (b) => Buffer.from(b).toString("base64");
+  if (cli("combinepsbt", JSON.stringify([filled, b64(ours.trimmed)])) !== cli("combinepsbt", JSON.stringify([filled, b64(ours.psbt)])))
+    problems.push("the trimmed PSBT merged back is not the full one");
   if (json("finalizepsbt", alone).complete) problems.push("Core finalized it without our signature");
   const fin = json("finalizepsbt", both);
   if (!fin.complete) {
