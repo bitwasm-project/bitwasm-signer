@@ -48,9 +48,13 @@ int main(void) {
     CHECK(at(86, 0, 0, "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"), "address BIP86 0/0");
     CHECK(at(86, 1, 0, "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7"), "address BIP86 1/0");
     CHECK(at(49, 1, 0, "34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7"), "address BIP49 1/0");
+    /* BIP44's P2PKH, as embit derives it */
+    CHECK(at(44, 0, 0, "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"), "address BIP44 0/0");
+    CHECK(at(44, 1, 3, "1DzVLMA4HzjXPAr6aZoaacDPHXXntsZ2zL"), "address BIP44 1/3");
+    CHECK(find("1DzVLMA4HzjXPAr6aZoaacDPHXXntsZ2zL", 10) == (1 << 20 | 3), "a P2PKH address is found");
+    CHECK(find("mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV", 10) == -CORE_ERR_FORMAT, "testnet P2PKH on mainnet");
     {
         char got[ADDRESS_MAX] = "x";
-        CHECK(core_address(44, 0, 0, 0, got) == CORE_ERR_FORMAT && !got[0], "address, legacy refused");
         CHECK(core_address(48, 0, 0, 0, got) == CORE_ERR_FORMAT, "address, multisig refused");
         CHECK(core_address(84, 0, 2, 0, got) == CORE_ERR_FORMAT, "address, chain 2");
         CHECK(core_address(84, 0, 0, 100000, got) == CORE_ERR_FORMAT, "address, index we would not call ours");
@@ -81,7 +85,7 @@ int main(void) {
 
     CHECK(find("BC1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", 10) == -CORE_ERR_FORMAT, "mixed case");
     CHECK(find("tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl", 10) == -CORE_ERR_FORMAT, "testnet on mainnet");
-    CHECK(find("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", 10) == -CORE_ERR_FORMAT, "base58");
+    CHECK(find("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", 10) == -CORE_ERR_NOT_FOUND, "someone else's P2PKH");
     CHECK(find("bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs", 10) == -CORE_ERR_FORMAT, "witness v2");
     CHECK(find("", 10) == -CORE_ERR_FORMAT, "empty");
     /* a NUL ends the address strcmp would see, and whatever follows it must not pass unread */

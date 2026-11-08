@@ -132,10 +132,10 @@ fun main(args: Array<String>) {
         ok("xpub for a hardened account is refused", e.message == "xpub: FORMAT")
     }
     try {
-        s.xpub(purpose = 44)
-        ok("xpub for BIP44 is refused", false)
+        s.xpub(purpose = 45)
+        ok("xpub for purpose 45 is refused", false)
     } catch (e: SignerException) {
-        ok("xpub for BIP44 is refused", e.message!!.contains("FORMAT"))
+        ok("xpub for purpose 45 is refused", e.message!!.contains("FORMAT"))
     }
 
     // --- which of our addresses an address is, against BIP84's and BIP86's vectors. A count of 20,
@@ -147,10 +147,10 @@ fun main(args: Array<String>) {
           AddressPath(0, 1))
     check("not ours", find("bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"), null)
     try {
-        find("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2")
-        ok("findAddress refuses base58", false)
+        find("mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV")
+        ok("findAddress refuses a testnet P2PKH", false)
     } catch (e: SignerException) {
-        ok("findAddress refuses base58", e.message == "findAddress: FORMAT")
+        ok("findAddress refuses a testnet P2PKH", e.message == "findAddress: FORMAT")
     }
 
     // --- BIP137: the signature Core's signmessagewithprivkey gives, with the P2WPKH header (check-core-diff)

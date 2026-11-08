@@ -95,6 +95,33 @@ int sighash_bip143_p2wsh(const plan_t *p, unsigned int index, const plan_wscript
     return 1;
 }
 
+/* Up to 0xffff, which is all a redeem script can be */
+static void h_compact(sha256_ctx *h, size_t n) {
+    uint8_t b[3] = {0xfd, (uint8_t)n, (uint8_t)(n >> 8)};
+    if (n < 0xfd) sha256_update(h, b + 1, 1);
+    else sha256_update(h, b, 3);
+}
+
+int sighash_legacy(const plan_t *p, unsigned int index, const uint8_t *code, size_t code_len, uint8_t out[32]) {
+    sha256_ctx h;
+    if (index >= p->n_inputs || code_len > PLAN_MAX_WSCRIPT) return 0;
+    sha256_init(&h);
+    h_le(&h, (uint32_t)p->tx_version, 4);
+    h_compact(&h, p->n_inputs);
+    for (unsigned int i = 0; i < p->n_inputs; i++) {
+        h_outpoint(&h, &p->inputs[i]);
+        h_compact(&h, i == index ? code_len : 0); /* every other input's script is emptied */
+        if (i == index) sha256_update(&h, code, code_len);
+        h_le(&h, p->inputs[i].sequence, 4);
+    }
+    h_compact(&h, p->n_outputs);
+    for (unsigned int i = 0; i < p->n_outputs; i++) h_output(&h, &p->outputs[i]);
+    h_le(&h, p->locktime, 4);
+    h_le(&h, 1, 4);
+    sha256d_final(&h, out);
+    return 1;
+}
+
 int sighash_bip341_keypath(const secp256k1_context *ctx, const plan_t *p, unsigned int index, uint8_t hash_type,
                            uint8_t out[32]) {
     /* epoch(1) + hash_type(1) + version/locktime(8) + sha_*(5x32) + spend_type(1) + input(at most 36+8+84+4) +

@@ -16,9 +16,10 @@ enum {
     CORE_ERR_NO_SEED,
     CORE_ERR_NOT_OURS, /* an input claims our fingerprint, but its key does not produce its script */
     CORE_ERR_NOTHING_TO_SIGN,
-    CORE_ERR_SIGHASH,        /* a sighash type we do not allow */
-    CORE_ERR_SCRIPT,         /* an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, a P2WSH multisig or Liana's */
-    CORE_ERR_PREVTX_MISSING, /* two or more inputs including SegWit v0, no non_witness_utxo, no PREVTX_OPTIONAL */
+    CORE_ERR_SIGHASH, /* a sighash type we do not allow */
+    CORE_ERR_SCRIPT,  /* an input to be signed is not P2PKH, P2WPKH, P2SH-P2WPKH, P2TR, a P2WSH multisig or Liana's */
+    CORE_ERR_PREVTX_MISSING, /* a P2PKH input, or two or more with SegWit v0 and no PREVTX_OPTIONAL: no non_witness_utxo
+                              */
     CORE_ERR_PREVTX_MISMATCH,
     CORE_ERR_FEE,
     CORE_ERR_NOT_REVIEWED,
@@ -107,19 +108,20 @@ void core_format_btc(uint64_t sats, char out[21]);
 int core_bip85_mnemonic(unsigned int words, uint32_t index, char *out, size_t cap);
 
 /* Where on m/purpose'/coin'/account' an address is: receive then change, indices below count, as chain << 20 |
- * index, or -CORE_ERR_*. 3/2 (P2SH) is purpose 49, bc1q/tb1q 84, bc1p/tb1p 86; any other is CORE_ERR_FORMAT */
+ * index, or -CORE_ERR_*. 1/m/n (P2PKH) is purpose 44, 3/2 (P2SH) 49, bc1q/tb1q 84, bc1p/tb1p 86; any other is
+ * CORE_ERR_FORMAT */
 int core_find_address(const char *addr, size_t len, uint32_t account, uint32_t count);
 
-/* The address at m/purpose'/coin'/account'/chain/index, purpose 49, 84 or 86, chain 0 or 1 and index below
+/* The address at m/purpose'/coin'/account'/chain/index, purpose 44, 49, 84 or 86, chain 0 or 1 and index below
  * the 100000 we would call ours, so a host can list them. CORE_OK, or CORE_ERR_*, out emptied */
 int core_address(unsigned int purpose, uint32_t account, uint32_t chain, uint32_t index, char out[ADDRESS_MAX]);
 
-/* The account xpub (m/purpose'/coin'/account') and its sh(wpkh()), wpkh() or tr() descriptor, so the PC
- * side can be watch-only. purpose is 48, 49, 84 or 86 and account below 2^31; 48 is m/48'/coin'/account'/2'
+/* The account xpub (m/purpose'/coin'/account') and its pkh(), sh(wpkh()), wpkh() or tr() descriptor, so the PC
+ * side can be watch-only. purpose is 44, 48, 49, 84 or 86 and account below 2^31; 48 is m/48'/coin'/account'/2'
  * (P2WSH) and gives the key expression for sortedmulti(). CORE_OK, or _FORMAT / _NO_SEED */
 #define CORE_XPUB_MAX 120
 #define CORE_DESC_MAX 180
-/* BIP137, purpose 49 or 84. Review shows the key's address and the message, in hex unless it is printable
+/* BIP137, purpose 44, 49 or 84. Review shows the key's address and the message, in hex unless it is printable
  * ASCII with no space at either end or two in a row; sign then signs that message, once */
 #define CORE_MESSAGE_MAX 1024
 enum { CORE_TEXT_MESSAGE = 0, CORE_TEXT_HEX };
@@ -130,7 +132,7 @@ typedef struct {
 } core_message_t;
 int core_message_review(const uint8_t *msg, size_t len, unsigned int purpose, uint32_t account, uint32_t chain,
                         uint32_t index, core_message_t *out);
-/* 65 bytes: the BIP137 header (35-38 P2SH-P2WPKH, 39-42 P2WPKH), then r and s */
+/* 65 bytes: the BIP137 header (31-34 P2PKH, 35-38 P2SH-P2WPKH, 39-42 P2WPKH), then r and s */
 int core_message_sign(uint8_t sig[65]);
 
 int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB_MAX], char desc[CORE_DESC_MAX]);

@@ -106,11 +106,11 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_display()` | 0 on success |
 | `signer_facts()` | 0 on success, `NO_SEED` without a seed |
 | `signer_sign()` | the number of signatures, or the negated error |
-| `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 1024 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 49 or 84; see below |
+| `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 1024 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 44, 49 or 84; see below |
 | `signer_message_sign()` | 0 on success, `NOT_REVIEWED` unless it is the message and key the last review showed |
-| `signer_xpub(purpose, account)` | 0 on success. m/purpose'/coin'/account' with `purpose` 49 (`sh(wpkh())`), 84 (`wpkh()`) or 86 (`tr()`), or m/48'/coin'/account'/2' with `purpose` 48 (the key expression for `wsh(sortedmulti())`), and `account` below 2^31, otherwise `FORMAT`, with the xpub and descriptor buffers emptied |
+| `signer_xpub(purpose, account)` | 0 on success. m/purpose'/coin'/account' with `purpose` 44 (`pkh()`), 49 (`sh(wpkh())`), 84 (`wpkh()`) or 86 (`tr()`), or m/48'/coin'/account'/2' with `purpose` 48 (the key expression for `wsh(sortedmulti())`), and `account` below 2^31, otherwise `FORMAT`, with the xpub and descriptor buffers emptied |
 | `signer_path_xpub(depth)` | 0 on success. The xpub (tpub on testnet) at the path in the input buffer, `depth` (1 to 8) little-endian uint32s with 2^31 added for a hardened step, into the xpub buffer; `FORMAT` for another depth or an Electrum seed, the buffer emptied |
-| `signer_address(purpose, account, chain, index)` | 0 on success. The address at m/purpose'/coin'/account'/chain/index, `purpose` 49, 84 or 86, `chain` 0 (receive) or 1 (change), `index` below the 100000 the review would call ours, otherwise `FORMAT`, with the buffer emptied. For listing addresses; `signer_find_address` goes the other way |
+| `signer_address(purpose, account, chain, index)` | 0 on success. The address at m/purpose'/coin'/account'/chain/index, `purpose` 44, 49, 84 or 86, `chain` 0 (receive) or 1 (change), `index` below the 100000 the review would call ours, otherwise `FORMAT`, with the buffer emptied. For listing addresses; `signer_find_address` goes the other way |
 | `signer_find_address(len, account, count)` | where the address in `signer_input()` is on m/purpose'/coin'/account', receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there. See below |
 | `signer_fingerprint()` | the master fingerprint, or 0 when no seed is loaded |
 | `signer_multisig_load(len)` | 0 on success. Registers the multisig in the input buffer; see below |
@@ -142,7 +142,8 @@ then a byte per input and per output, 16 each, zero past the plan's counts or fo
 ## Finding our addresses
 
 `signer_find_address` answers "is this address mine?" before someone sends to it. The purpose follows
-from the address: `3`/`2` (base58 P2SH) is BIP49, `bc1q`/`tb1q` is BIP84, `bc1p`/`tb1p` is BIP86.
+from the address: `1` or `m`/`n` (base58 P2PKH) is BIP44, `3`/`2` (base58 P2SH) is BIP49, `bc1q`/`tb1q` is BIP84,
+`bc1p`/`tb1p` is BIP86.
 Anything else, or an address for the other network, is `FORMAT`. A bech32 address may be all upper
 case, since that is what a QR's alphanumeric mode carries, but not mixed, and may hold only `0-9a-zA-Z`;
 a base58 one is compared as it is, since its case is part of it. `count` is 1 to 100,000.
@@ -192,8 +193,8 @@ wallet has no crypto-output tag, so `signer_multisig_cbor()` returns `-FORMAT` f
 ## Signing a message
 
 `signer_message_review` and `signer_message_sign` make a
-[BIP137](https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki) signature: the header (35-38
-for P2SH-P2WPKH, 39-42 for P2WPKH), then r and s; most wallets take it in base64. As with a
+[BIP137](https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki) signature: the header (31-34
+for P2PKH, 35-38 for P2SH-P2WPKH, 39-42 for P2WPKH), then r and s; most wallets take it in base64. As with a
 transaction, one review permits one signature, and the module signs only the message and key it
 hashed at review time, so a message or key swapped in afterwards is refused. Like the plan's, that hash
 is in memory the host can write: it binds review to signing, it does not defend against the host. A
@@ -216,7 +217,7 @@ be the bytes Core gives for the same key. P2TR has no BIP137 form; BIP322 is not
 | 4 | `NOTHING_TO_SIGN` | no input in the plan is ours |
 | 5 | `SIGHASH` | a sighash type this signer does not allow |
 | 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most 15 keys |
-| 7 | `PREVTX_MISSING` | two or more inputs including SegWit v0, and no previous transaction, without `signer_init`'s bit 2 |
+| 7 | `PREVTX_MISSING` | a P2PKH input to sign and any input without its previous transaction, whatever `signer_init`'s bit 2 says; or two or more inputs including SegWit v0 without one, and without bit 2 |
 | 8 | `PREVTX_MISMATCH` | the previous transaction disagrees with the claimed amount, txid or vout |
 | 9 | `FEE` | the fee does not add up, or overflows |
 | 10 | `NOT_REVIEWED` | the plan is not the one review passed, or the approval was already used |
@@ -329,9 +330,7 @@ is still deterministic.
 
 ## What this module does not do
 
-P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most 15 keys
+P2PKH (BIP44), P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most 15 keys
 (BIP48), `SIGHASH_ALL` and Taproot's `SIGHASH_DEFAULT`. P2WSH change is shown as change only for a registered multisig
-wallet; without one it is shown as an external output and counted in `spend`. No taproot multisig, no script trees,
-no legacy P2PKH
-signing. The full list is in
+wallet; without one it is shown as an external output and counted in `spend`. No taproot multisig, no script trees. The full list is in
 bitwasm-signer-pico's `docs/limitations.md`.
