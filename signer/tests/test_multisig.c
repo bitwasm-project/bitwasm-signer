@@ -1,9 +1,11 @@
-/* Registering a P2WSH or P2SH-P2WSH sortedmulti or multi wallet: the three formats it comes in, what makes one refused,
- * and the descriptor and addresses it gives back, against Bitcoin Core's getdescriptorinfo and deriveaddresses */
+/* Registering a P2WSH, P2SH-P2WSH or P2SH sortedmulti or multi wallet: the three formats it comes in, what makes one
+ * refused, and the descriptor and addresses it gives back, against Bitcoin Core's getdescriptorinfo and deriveaddresses
+ */
 #include <stdio.h>
 #include <string.h>
 #include "core.h"
 #include "sha512.h"
+#include "hash.h"
 
 static int checks, failures;
 #define CHECK(cond, ...)                                                                                               \
@@ -249,6 +251,35 @@ static int checks, failures;
 #define SH_MULTI_SUM "4psenw97"
 #define SH_MULTI_CHANGE0 "3LNSgUe93XWXrT21JP4wtazWVWsJWCcghL"
 
+/* P2SH at BIP45's m/45', the multisig its redeem script, for the same three seeds; Core's checksums and addresses */
+#define XPUBL0                                                                                                         \
+    "xpub68jrRzQopSUSiczuqjRwvVn3CFtSEZY6a3jbT66LM3tvt1rXtYT7Udi8dt3m1qj3q8pKZjt7tqrSt7bRN4LD2vSVq1167PSA5AyM31FUHwU"
+#define XPUBL1                                                                                                         \
+    "xpub68MXAZN5xcN3naSp29rp7gtiW8Srp3u1MegfWpt8aV7UuypzE4jxR3RDtr5DzHK9a2tDtDb7vfftKLfuX2Fi2E9PoHT1XxV6QQKKBPaPi23"
+#define XPUBL2                                                                                                         \
+    "xpub69F7Wq4sNAW5Pn3yZHGE4hygVRSHhM7uMpkD1Ah7amz8iiCcvX5ESpLSUafwHJZP64bz5Ls69RwRZpvTLbxVpc8M59KtYQpPHnsF2MoDZJY"
+#define KL0 "[73c5da0a/45h]" XPUBL0
+#define KL1 "[3f635a63/45h]" XPUBL1
+#define KL2 "[b8688df1/45h]" XPUBL2
+#define LEG "sh(sortedmulti(2," KL0 "/<0;1>/*," KL1 "/<0;1>/*," KL2 "/<0;1>/*))"
+#define LEG_SUM "j9w8yqfg"
+#define LEG_RECEIVE0 "3FT3itUW6vozEHS1rCgd8eHhnSZ9LQiPkY"
+#define LEG_RECEIVE7 "32fSBw1gSPgh1zR6VBPB7b2GbsTez2Vk8Q"
+#define LEG_CHANGE0 "3HHbm35wGfbNJx2H5hnqMDowceUu7AiJtR"
+#define LEG_RECEIVE0_WS                                                                                                \
+    "522102928ce56c258522767df7385d9a5f4beaf599d310f52b510a4cf01c762749bb7a21036f61e31cfce194cb77e0ccfa835f8808529e83" \
+    "866113edb35fbcd98e4756d72a2103edb9dd0fa07a8ac85c9be2a27db8497768435f911bed34555ca1d62962a4a5de53ae"
+#define LEG_RECEIVE0_SPK "a91496ed70744449302228c4189e6fa9476442bba0fa87"
+#define LEG_RECEIVE0_SH_WSH "a914a70f52ee47852e9e54b2c4ace559c9134e1cb99687"
+#define LEG_RECEIVE0_OURS "02928ce56c258522767df7385d9a5f4beaf599d310f52b510a4cf01c762749bb7a"
+#define LEG_CHANGE0_WS                                                                                                 \
+    "52210227cd6407bf556554b7141214f3f605665411b6f2c5bbeca7b7561cbf920fc80e210384d7f62a2eb4aced9d36e1f0357032460188"   \
+    "161f063f03abd079eefd8b8699bb2103b3a502f42a1bd9207027dc77334411d746b092c0d0e876d9ce3d8be8295a759e53ae"
+#define LEG_CHANGE0_SPK "a914ab14463f14d080dfc32ebfe265b38521a80f78e887"
+#define LEG_MULTI "sh(multi(2," KL1 "/<0;1>/*," KL0 "/<0;1>/*," KL2 "/<0;1>/*))"
+#define LEG_MULTI_SUM "yw8y8kwj"
+#define LEG_MULTI_CHANGE0 "37CuxMeqeEJ9qgEWtyMrjdvJrr3AJK2Qr6"
+
 static core_multisig_t ms;
 
 static int load(const char *text) {
@@ -339,6 +370,66 @@ static void nested(void) {
     p = liana_plan(SH_RECEIVE0_WS, SH_RECEIVE0_SPK, 0, SH_CHANGE0_SPK, 1);
     p.inputs[0].key.path[3] = p.outputs[1].key.path[3] = 1 | 0x80000000u;
     CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_EXTERNAL,
+          "with no wallet registered, still signed; the change not ours");
+}
+
+/* sh(): its formats and addresses, and an input of it signed as a legacy input, only with its previous transaction */
+static void legacy(void) {
+    plan_t p;
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_SIGS];
+    core_prevtx_t prev[PLAN_MAX_INPUTS] = {{0}};
+    uint8_t cbor[1024], ours[33], h[32], raw[83] = {2, 0, 0, 0, 1}, *o = raw + 5;
+    char addr[ADDRESS_MAX];
+    unsigned int n;
+    int len;
+
+    CHECK(load(LEG) == CORE_OK && ms.kind == CORE_WALLET_P2SH && !strcmp(ms.receive, LEG_RECEIVE0),
+          "sh(sortedmulti()) and its first receive address: %s", ms.receive);
+    CHECK(!strcmp(ms.descriptor, LEG "#" LEG_SUM), "the descriptor with Core's checksum: %s", ms.descriptor);
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, LEG_CHANGE0), "change 0 is Core's: %s", addr);
+    CHECK(core_multisig_find_address(LEG_RECEIVE7, strlen(LEG_RECEIVE7), 10) == 7, "receive 7 found");
+    len = core_multisig_cbor(cbor, sizeof(cbor));
+    CHECK(len > 0 && !memcmp(cbor, "\xd9\x01\x90\xd9\x01\x97", 6), "crypto-output starts sh (400), sortedmulti (407)");
+    CHECK(core_multisig_load_cbor(cbor, (size_t)len, &ms) == CORE_OK && !strcmp(ms.descriptor, LEG "#" LEG_SUM),
+          "and registers the same wallet");
+    CHECK(load("Policy: 2 of 3\nDerivation: m/45'\nFormat: P2SH\n73C5DA0A: " XPUBL0 "\n3F635A63: " XPUBL1
+               "\nB8688DF1: " XPUBL2) == CORE_OK &&
+              !strcmp(ms.descriptor, LEG "#" LEG_SUM),
+          "a setup file for P2SH");
+    CHECK(load(LEG_MULTI) == CORE_OK && !strcmp(ms.descriptor, LEG_MULTI "#" LEG_MULTI_SUM) &&
+              core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, LEG_MULTI_CHANGE0),
+          "sh(multi()), its change 0 Core's: %s", addr);
+    CHECK(load("sh(or_d(pk(" KL0 "/<0;1>/*),and_v(v:pkh(" KL1 "/<0;1>/*),older(144))))") == CORE_ERR_FORMAT,
+          "an or_d in sh() alone, refused");
+
+    CHECK(load(LEG) == CORE_OK, "loaded again");
+    p = liana_plan(LEG_RECEIVE0_WS, LEG_RECEIVE0_SPK, 0, LEG_CHANGE0_SPK, 1);
+    p.inputs[0].key = (plan_keypath_t){3, 0x73c5da0a, {45 | 0x80000000u, 0, 0}};
+    p.outputs[1].key = (plan_keypath_t){3, 0x73c5da0a, {45 | 0x80000000u, 1, 0}};
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_PREVTX_MISSING, "not without its previous transaction");
+    /* that transaction: liana_plan's outpoint and an empty scriptSig in, 100000 sat to the P2SH out */
+    memset(o, 0x11, 36), o += 37;
+    memset(o, 0xff, 4), o += 4;
+    *o++ = 1, o[0] = 0xa0, o[1] = 0x86, o[2] = 0x01, o += 8;
+    *o++ = 23, unhex(LEG_RECEIVE0_SPK, o);
+    sha256(raw, sizeof(raw), h), sha256(h, 32, p.inputs[0].prev_txid);
+    prev[0].raw = raw, prev[0].len = sizeof(raw);
+    unhex(LEG_RECEIVE0_OURS, ours);
+    CHECK(core_review(&p, prev, &r) == CORE_OK && r.n_sign == 1 && r.owner[0] == CORE_OUT_EXTERNAL &&
+              r.owner[1] == CORE_OUT_CHANGE,
+          "a P2SH input to sign, its change the wallet's");
+    CHECK(core_sign(&p, NULL, sigs, &n) == CORE_OK && n == 1 && !memcmp(sigs[0].pubkey, ours, 33),
+          "signed with our key in it");
+    p.wscripts[0].len = (uint16_t)unhex(LEG_CHANGE0_WS, p.wscripts[0].bytes);
+    CHECK(core_review(&p, prev, &r) == CORE_ERR_NOT_OURS, "a redeem script the P2SH does not hash to");
+    p.wscripts[0].len = (uint16_t)unhex(LEG_RECEIVE0_WS, p.wscripts[0].bytes);
+    p.inputs[0].spk.len = (uint8_t)unhex(LEG_RECEIVE0_SH_WSH, p.inputs[0].spk.bytes);
+    CHECK(core_review(&p, prev, &r) == CORE_ERR_WALLET, "the same script as P2SH-P2WSH, not the wallet registered");
+    p.inputs[0].spk.len = (uint8_t)unhex(LEG_RECEIVE0_SPK, p.inputs[0].spk.bytes);
+    CHECK(load(SH) == CORE_OK && core_review(&p, prev, &r) == CORE_ERR_WALLET, "nor with another wallet registered");
+    core_multisig_unload();
+    CHECK(core_review(&p, prev, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_EXTERNAL,
           "with no wallet registered, still signed; the change not ours");
 }
 
@@ -680,9 +771,9 @@ int main(void) {
                "\n") == CORE_OK &&
               !strcmp(ms.descriptor, DESC "#" CHECKSUM),
           "a Coldcard setup file");
-    CHECK(load("Policy: 2 of 3\nDerivation: m/48'/0'/0'/2'\nFormat: P2SH\n73C5DA0A: " XPUB0 "\n3F635A63: " XPUB1
+    CHECK(load("Policy: 2 of 3\nDerivation: m/48'/0'/0'/2'\nFormat: P2TR\n73C5DA0A: " XPUB0 "\n3F635A63: " XPUB1
                "\nB8688DF1: " XPUB2) == CORE_ERR_FORMAT,
-          "a setup file for P2SH");
+          "a setup file for P2TR");
     CHECK(load("Policy: 2 of 3\nDerivation: m/48'/0'/0'/2'\nFormat: P2WSH\n73C5DA0A: " XPUB0 "\n3F635A63: " XPUB1) ==
               CORE_ERR_FORMAT,
           "a setup file with fewer keys than its policy");
@@ -732,6 +823,7 @@ int main(void) {
           "crypto-account: our fingerprint and four outputs");
     CHECK(core_account_cbor(0, cbor, 100) == -CORE_ERR_FORMAT, "a buffer too small");
     nested();
+    legacy();
     liana();
     or_d_variants();
     or_d_multi();

@@ -139,7 +139,7 @@ pub struct Plan {
     pub n_outputs: u8,
     pub inputs: [Input; MAX_INPUTS],
     pub outputs: [Output; MAX_OUTPUTS],
-    /// A P2WSH input's witness script, only for one to be signed.
+    /// A P2WSH input's witness script, or a P2SH multisig's redeem script, only for one to be signed.
     pub wscripts: [WScript; MAX_INPUTS],
 }
 

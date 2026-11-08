@@ -44,8 +44,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         const plan_wscript_t *w = &p->wscripts[i];
         MUST(w->len <= PLAN_MAX_WSCRIPT);
         for (unsigned int k = w->len; k < PLAN_MAX_WSCRIPT; k++) MUST(!w->bytes[k]);
-        MUST(!w->len || (i < p->n_inputs && p->inputs[i].spk.len == 34 && p->inputs[i].spk.bytes[0] == 0 &&
-                         p->inputs[i].spk.bytes[1] == 32 && p->inputs[i].key.depth));
+        const plan_script_t *s = &p->inputs[i].spk; /* P2WSH, or P2SH: P2SH-P2WSH or a P2SH multisig */
+        MUST(!w->len || (i < p->n_inputs && p->inputs[i].key.depth &&
+                         ((s->len == 34 && s->bytes[0] == 0 && s->bytes[1] == 32) ||
+                          (s->len == 23 && s->bytes[0] == 0xa9 && s->bytes[1] == 20 && s->bytes[22] == 0x87))));
     }
     for (unsigned int i = 0; i < p->n_outputs; i++) {
         MUST(p->outputs[i].spk.len <= PLAN_MAX_SPK);

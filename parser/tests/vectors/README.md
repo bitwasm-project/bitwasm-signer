@@ -22,13 +22,14 @@ The seed is BIP39's published all-zero test vector (`abandon` x11 + `about`), fi
 | `own_mixed_nwu` | P2WPKH and P2TR in one transaction |
 | `own_p2sh_p2wpkh_1in` | one BIP49 P2SH-P2WPKH input, paying out plus P2SH change |
 | `own_mixed_p2sh_nwu` | P2WPKH and P2SH-P2WPKH in one transaction |
-| `own_with_p2sh_multisig_input` | one P2WPKH input ours, beside a P2SH multisig whose key and fingerprint are ours too |
 | `own_with_foreign_input` | one input ours, one someone else's |
 | `own_p2pkh_1in` | one BIP44 P2PKH input, with its previous transaction alone, paying out plus change |
 | `own_mixed_p2pkh_nwu` | P2PKH and P2WPKH in one transaction, each with its previous transaction |
 | `own_p2wsh_2of3_1in` | one BIP48 P2WSH 2-of-3 input, paying out plus P2WSH change |
 | `own_p2wsh_2of3_cosigned` | the same, with a cosigner's signature already in it |
 | `own_mixed_p2wsh_nwu` | P2WPKH and P2WSH 2-of-3 in one transaction |
+| `own_p2sh_2of3_1in` | one BIP45 P2SH 2-of-3 input, the multisig its redeem script, with its previous transaction alone; paying out plus P2SH change |
+| `own_mixed_p2sh_2of3_nwu` | P2WPKH and P2SH 2-of-3 in one transaction, each with its previous transaction |
 | `own_with_p2wsh_2of7_input` | one P2WPKH input ours, beside a P2WSH 2-of-7 also ours: seven keys, which plan version 4 holds |
 | `own_liana_primary_1in` | one Liana input, ours the primary key, recovery after 52596 blocks; paying out plus change |
 | `own_liana_recovery_1in` | the same with ours the recovery key on chains 2 and 3, spent once `older(144)` holds |
