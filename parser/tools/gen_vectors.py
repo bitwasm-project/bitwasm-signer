@@ -32,7 +32,7 @@ def multisig(path):
 
 
 # BIP48 P2WSH 2-of-3 with two cosigners from BIP39's other published vectors. m/48h/0h/1h/2h holds seven keys,
-# the three seeds at accounts 1 and 3 beside ours: a witness script too long for the plan, so not one we sign
+# the three seeds at accounts 1 and 3 beside ours, which plan version 4 has room to sign
 COSIGNERS = [bip32.HDKey.from_seed(hashlib.pbkdf2_hmac("sha512", m.encode(), b"mnemonic", 2048))
              for m in ("zoo " * 11 + "wrong",
                        "legal winner thank year wave sausage worth useful legal winner thank yellow",
@@ -49,7 +49,13 @@ def wsh_script(path):
     return script.Script(script.multisig(2, sorted([key(path)] + cosigner_keys(path), key=lambda k: k.sec())).data)
 
 
+def nested(path):
+    return path.startswith("m/48h/0h/0h/1h")  # BIP48 script type 1: P2SH-P2WSH
+
+
 def spk(path):
+    if nested(path):
+        return script.p2sh(script.p2wsh(wsh_script(path)))
     if path.startswith("m/48h"):
         return script.p2wsh(wsh_script(path))
     if path.startswith("m/45h"):
@@ -58,6 +64,8 @@ def spk(path):
         return script.p2tr(key(path))
     if path.startswith("m/49h"):
         return script.p2sh(script.p2wpkh(key(path)))
+    if path.startswith("m/44h"):
+        return script.p2pkh(key(path))
     return script.p2wpkh(key(path))
 
 
@@ -72,7 +80,7 @@ def keypath(path):
 
 
 def wsh_expected(path):
-    return path is not None and path.startswith("m/48h/0h/0h")
+    return path is not None and path.startswith("m/48h")
 
 
 def build(name, inputs, outputs, cosigned=False):
@@ -85,9 +93,9 @@ def build(name, inputs, outputs, cosigned=False):
         vin.append(TransactionInput(ptx.txid(), vout, sequence=0xFFFFFFFD))
         exp_in.append({"prev_txid": bytes(reversed(ptx.txid())).hex(), "prev_vout": vout, "sequence": 0xFFFFFFFD,
                        "amount": amount, "spk": s.data.hex(),
-                       "key": keypath(path) if path and not path.startswith(("m/45h", "m/48h/0h/1h")) else None,
+                       "key": keypath(path) if path and not path.startswith("m/45h") else None,
                        "sighash_type": (0 if path.startswith("m/86h") else 1)
-                       if path and not path.startswith(("m/45h", "m/48h/0h/1h")) else 0,
+                       if path and not path.startswith("m/45h") else 0,
                        "wscript": wsh_script(path).data.hex() if wsh_expected(path) else "",
                        "has_prevtx": nwu})
     vout = []
@@ -98,7 +106,8 @@ def build(name, inputs, outputs, cosigned=False):
                         "key": keypath(path) if path else None})
     psbt = PSBT(Transaction(version=2, vin=vin, vout=vout))
     for inp, (path, _, _, nwu), (ptx, v, s, amount) in zip(psbt.inputs, inputs, prevs):
-        inp.witness_utxo = TransactionOutput(amount, s)
+        if not (path and path.startswith("m/44h")):  # a legacy input has its previous transaction alone
+            inp.witness_utxo = TransactionOutput(amount, s)
         if nwu:
             inp.non_witness_utxo = ptx
         if path and path.startswith("m/86h"):
@@ -109,6 +118,8 @@ def build(name, inputs, outputs, cosigned=False):
             inp.redeem_script = script.p2wpkh(key(path))
         if path and path.startswith("m/45h"):
             inp.redeem_script = multisig(path)
+        if path and nested(path):
+            inp.redeem_script = script.p2wsh(wsh_script(path))
         if path and path.startswith("m/48h"):
             inp.witness_script = wsh_script(path)
             for c, k in zip(COSIGNERS, cosigner_keys(path)):
@@ -122,6 +133,8 @@ def build(name, inputs, outputs, cosigned=False):
             o.bip32_derivations[key(path)] = DerivationPath(FP, path_list(path))
         if path and path.startswith("m/49h"):
             o.redeem_script = script.p2wpkh(key(path))
+        if path and nested(path):
+            o.redeem_script = script.p2wsh(wsh_script(path))
         if path and path.startswith("m/48h"):
             o.witness_script = wsh_script(path)
             for c, k in zip(COSIGNERS, cosigner_keys(path)):
@@ -155,6 +168,16 @@ build("own_mixed_p2wsh_nwu", [(A + "/0/0", 100000, 0, True), (W + "/0/2", 50000,
       [(None, 100000), (A + "/1/0", 49000)])
 build("own_with_p2wsh_2of7_input", [(A + "/0/0", 100000, 0, True), ("m/48h/0h/1h/2h/0/0", 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
+# P2SH-P2WSH, BIP48's script type 1, its change too; and beside a P2WPKH input
+N = "m/48h/0h/0h/1h"
+build("own_p2sh_p2wsh_2of3_1in", [(N + "/0/0", 100000, 0, False)], [(None, 60000), (N + "/1/0", 39000)])
+build("own_mixed_p2sh_p2wsh_nwu", [(A + "/0/0", 100000, 0, True), (N + "/0/2", 50000, 0, True)],
+      [(None, 100000), (N + "/1/0", 49000)])
+# BIP44 P2PKH, which the signer signs only with every input's previous transaction
+L = "m/44h/0h/0h"
+build("own_p2pkh_1in", [(L + "/0/0", 100000, 0, True)], [(None, 60000), (L + "/1/0", 39000)])
+build("own_mixed_p2pkh_nwu", [(L + "/0/0", 100000, 0, True), (A + "/0/1", 50000, 1, True)],
+      [(None, 100000), (L + "/1/0", 49000)])
 build("own_with_foreign_input", [(A + "/0/0", 100000, 0, True), (None, 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
 

@@ -77,15 +77,52 @@ int sighash_bip143_p2wpkh(const plan_t *p, unsigned int index, const uint8_t pkh
 
 int sighash_bip143_p2wsh(const plan_t *p, unsigned int index, const plan_wscript_t *ws, uint8_t out[32]) {
     const plan_input_t *in = &p->inputs[index];
-    uint8_t h[32], code[1 + PLAN_MAX_WSCRIPT];
+    uint8_t redeem[34] = {0x00, 32}, h[20], code[3 + PLAN_MAX_WSCRIPT];
+    size_t o;
 
     if (index >= p->n_inputs || ws->len > PLAN_MAX_WSCRIPT) return 0;
-    sha256(ws->bytes, ws->len, h);
-    if (!(in->spk.len == 34 && in->spk.bytes[0] == 0 && in->spk.bytes[1] == 32 && !memcmp(in->spk.bytes + 2, h, 32)))
-        return 0; /* the witness script is not what this input's script pays to */
-    code[0] = ws->len;
-    memcpy(code + 1, ws->bytes, ws->len);
-    bip143(p, index, code, 1u + ws->len, out);
+    sha256(ws->bytes, ws->len, redeem + 2);
+    hash160(redeem, sizeof(redeem), h);
+    /* the witness script has to be what this input's script pays to, as P2WSH or P2SH-P2WSH */
+    if (!(in->spk.len == 34 && !memcmp(in->spk.bytes, redeem, 34)) &&
+        !(in->spk.len == 23 && in->spk.bytes[0] == 0xa9 && in->spk.bytes[1] == 20 && in->spk.bytes[22] == 0x87 &&
+          !memcmp(in->spk.bytes + 2, h, 20)))
+        return 0;
+    /* scriptCode with its compact size: 0xfd and two bytes from 253, as 15 keys reach */
+    if (ws->len < 0xfd) {
+        code[0] = (uint8_t)ws->len, o = 1;
+    } else {
+        code[0] = 0xfd, code[1] = (uint8_t)ws->len, code[2] = (uint8_t)(ws->len >> 8), o = 3;
+    }
+    memcpy(code + o, ws->bytes, ws->len);
+    bip143(p, index, code, o + ws->len, out);
+    return 1;
+}
+
+/* Up to 0xffff, which is all a redeem script can be */
+static void h_compact(sha256_ctx *h, size_t n) {
+    uint8_t b[3] = {0xfd, (uint8_t)n, (uint8_t)(n >> 8)};
+    if (n < 0xfd) sha256_update(h, b + 1, 1);
+    else sha256_update(h, b, 3);
+}
+
+int sighash_legacy(const plan_t *p, unsigned int index, const uint8_t *code, size_t code_len, uint8_t out[32]) {
+    sha256_ctx h;
+    if (index >= p->n_inputs || code_len > PLAN_MAX_WSCRIPT) return 0;
+    sha256_init(&h);
+    h_le(&h, (uint32_t)p->tx_version, 4);
+    h_compact(&h, p->n_inputs);
+    for (unsigned int i = 0; i < p->n_inputs; i++) {
+        h_outpoint(&h, &p->inputs[i]);
+        h_compact(&h, i == index ? code_len : 0); /* every other input's script is emptied */
+        if (i == index) sha256_update(&h, code, code_len);
+        h_le(&h, p->inputs[i].sequence, 4);
+    }
+    h_compact(&h, p->n_outputs);
+    for (unsigned int i = 0; i < p->n_outputs; i++) h_output(&h, &p->outputs[i]);
+    h_le(&h, p->locktime, 4);
+    h_le(&h, 1, 4);
+    sha256d_final(&h, out);
     return 1;
 }
 

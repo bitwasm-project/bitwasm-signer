@@ -122,6 +122,13 @@ const tr = S.xpub({ purpose: 86 });
 check("BIP86's account 0", tr.xpub,
       "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ");
 check("the tr() descriptor", tr.descriptor, `tr([73c5da0a/86h/0h/0h]${tr.xpub}/<0;1>/*)`);
+check("pathXpub() of m/84'/0'/0' is the account's", S.pathXpub([84 + 2 ** 31, 2 ** 31, 2 ** 31]), x.xpub);
+try {
+  S.pathXpub(new Array(9).fill(0));
+  ok("pathXpub() refuses nine steps", false);
+} catch (e) {
+  ok("pathXpub() refuses nine steps", e instanceof RangeError);
+}
 {
   const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
   const big = (b) => BigInt("0x" + Buffer.from(b).toString("hex"));
@@ -161,7 +168,7 @@ check("the tr() descriptor", tr.descriptor, `tr([73c5da0a/86h/0h/0h]${tr.xpub}/<
   mem().set(mn, E.signer_input());
   E.signer_seed_from_mnemonic(mn.length, 0);
   check("the raw ABI exports an xpub", E.signer_xpub(84, 0), 0);
-  check("then refuses BIP44", E.signer_xpub(44, 0), 1);
+  check("then refuses purpose 45", E.signer_xpub(45, 0), 1);
   ok("and the xpub and descriptor buffers are empty", mem()[E.signer_xpub_output()] === 0 && mem()[E.signer_desc_output()] === 0);
 }
 // JavaScript would wrap these into a valid i32, so the library refuses them before the module sees them
@@ -173,7 +180,7 @@ for (const [what, opts] of [["2^32 + 1", { account: 2 ** 32 + 1 }], ["1.5", { ac
     ok(`xpub for account ${what} is refused`, e instanceof RangeError);
   }
 }
-for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", { account: 0x80000000 }]]) {
+for (const [what, opts] of [["purpose 45", { purpose: 45 }], ["a hardened account", { account: 0x80000000 }]]) {
   try {
     S.xpub(opts);
     ok(`xpub for ${what} is refused`, false);
@@ -189,14 +196,16 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("BIP84 change 1/0", found("bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"), '{"chain":1,"index":0}');
   check("BIP86 0/1", found("bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh"), '{"chain":0,"index":1}');
   check("BIP49 change 1/0, in base58", found("34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7"), '{"chain":1,"index":0}');
+  check("BIP44 change 1/3, P2PKH", found("1DzVLMA4HzjXPAr6aZoaacDPHXXntsZ2zL"), '{"chain":1,"index":3}');
+  check("someone else's P2PKH", found("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"), "null");
   check("a BIP21 URI in upper case, as a QR carries it",
         found("bitcoin:BC1QNJG0JD8228AQ7EGYZACY8CYS3KNF9XVRERKF9G?amount=0.1"), '{"chain":0,"index":1}');
   check("not ours", found("bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"), "null");
   check("beyond count", found("bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", { count: 1 }), "null");
   check("another account", found("bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", { account: 1, count: 20 }), "null");
   for (const [what, a, err, opts] of [["a testnet address", "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl", SignerError],
-                                ["base58", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", SignerError],
-                                ["an oversized string", "bc1q" + "q".repeat(1100), RangeError],
+                                ["a testnet P2PKH", "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV", SignerError],
+                                ["an oversized string", "bc1q" + "q".repeat(3100), RangeError],
                                 ["a NUL inside", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g\0junk", SignerError],
                                 ["a count JavaScript would wrap", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", RangeError, { count: 2 ** 32 + 5 }]]) {
     try {
@@ -213,7 +222,8 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("address BIP84 0/1", S.address({ chain: 0, index: 1 }), "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g");
   check("address BIP86 0/1", S.address({ purpose: 86, index: 1 }), "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh");
   check("address BIP49 change 1/0", S.address({ purpose: 49, chain: 1 }), "34K56kSjgUCUSD8GTtuF7c9Zzwokbs6uZ7");
-  for (const [what, opts, err] of [["legacy", { purpose: 44 }, SignerError], ["chain 2", { chain: 2 }, SignerError],
+  check("address BIP44 0/0", S.address({ purpose: 44 }), "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA");
+  for (const [what, opts, err] of [["purpose 45", { purpose: 45 }, SignerError], ["chain 2", { chain: 2 }, SignerError],
                                    ["an index we would not call ours", { index: 100000 }, SignerError],
                                    ["an index JavaScript would wrap", { index: 2 ** 32 }, RangeError]]) {
     try {
@@ -260,13 +270,13 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   P2.unload();
 }
 
-// --- BIP48 P2WSH multisig: signed only once the witness script is a multisig of at most six keys, hashes to
+// --- BIP48 P2WSH multisig: signed only once the witness script is a multisig of at most 15 keys, hashes to
 // the input's script and holds our key. Core signs the same PSBTs byte for byte: check-core-diff
 {
   const W = await Signer.load(signerWasm, pin);
   W.init().seedFromMnemonic(new TextEncoder().encode(MNEMONIC));
   const FP = parseInt("73c5da0a", 16);
-  const IN = (i) => 24 + 176 * i, WS = (i) => 5016 + 220 * i;
+  const IN = (i) => 24 + 176 * i, WS = (i) => 5016 + 522 * i;  // a 2-byte length, then the script
   const sha = (b) => createHash("sha256").update(b).digest();
   const refused = (what, plan, prevTxs, re) => {
     try {
@@ -291,24 +301,24 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   {
     const m = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of7_input.psbt`, FP);
     const rm = W.setPlan(m.plan).setPrevTxs(m.prevTxs).review();
-    ok("a seven-key witness script is not ours to sign; the P2WPKH beside it is", rm.nSign === 1 && rm.willSign[0] && !rm.willSign[1]);
+    ok("a seven-key witness script is signed beside the P2WPKH", rm.nSign === 2 && rm.willSign[0] && rm.willSign[1]);
   }
   const base = planFor(`${root}parser/build/vectors/own_p2wsh_2of3_1in.psbt`, FP);
   const fresh = () => Uint8Array.from(base.plan);
   // a witness script and an input script that agree with each other, but not with this test's intent
-  const rehash = (plan) => plan.set(sha(plan.subarray(WS(0) + 1, WS(0) + 1 + plan[WS(0)])), IN(0) + 49 + 2);
+  const rehash = (plan) => plan.set(sha(plan.subarray(WS(0) + 2, WS(0) + 2 + plan[WS(0)])), IN(0) + 49 + 2);
   {
     const plan = fresh();
-    for (let k = 0; k < 3; k++) plan[WS(0) + 1 + 1 + 34 * k + 5] ^= 1;  // a byte of every key, ours among them
+    for (let k = 0; k < 3; k++) plan[WS(0) + 2 + 1 + 34 * k + 5] ^= 1;  // a byte of every key, ours among them
     refused("a witness script that does not hash to the input's script is refused", plan, base.prevTxs, /NOT_OURS/);
     rehash(plan);
     refused("a multisig without our key is refused", plan, base.prevTxs, /NOT_OURS/);
   }
   for (const [what, mutate] of [
-    ["OP_CHECKMULTISIGVERIFY", (pl) => { pl[WS(0) + pl[WS(0)]] = 0xaf; }],
-    ["a threshold above the key count", (pl) => { pl[WS(0) + 1] = 0x54; }],
-    ["a key count that is not the number of keys", (pl) => { pl[WS(0) + pl[WS(0)] - 1] = 0x52; }],
-    ["an uncompressed key prefix", (pl) => { pl[WS(0) + 1 + 2] = 0x04; }],
+    ["OP_CHECKMULTISIGVERIFY", (pl) => { pl[WS(0) + 1 + pl[WS(0)]] = 0xaf; }],
+    ["a threshold above the key count", (pl) => { pl[WS(0) + 2] = 0x54; }],
+    ["a key count that is not the number of keys", (pl) => { pl[WS(0) + pl[WS(0)]] = 0x52; }],
+    ["an uncompressed key prefix", (pl) => { pl[WS(0) + 2 + 2] = 0x04; }],
   ]) {
     const plan = fresh();
     mutate(plan);
@@ -317,7 +327,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   }
   {
     const plan = fresh();
-    plan.fill(0, WS(0), WS(0) + 220);
+    plan.fill(0, WS(0), WS(0) + 522);
     refused("a P2WSH input to be signed without its witness script is refused", plan, base.prevTxs, /SCRIPT/);
   }
   {
@@ -330,33 +340,33 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
     plan[WS(0)] -= 1;  // shortening the 2-of-3 leaves OP_CHECKMULTISIG past its length
     refused("a byte past the witness script's length is refused", plan, base.prevTxs, /FORMAT/);
     const p2 = fresh();
-    p2.set(p2.subarray(WS(0), WS(0) + 220), WS(1));
+    p2.set(p2.subarray(WS(0), WS(0) + 522), WS(1));
     refused("a witness script for an input that is not there is refused", p2, base.prevTxs, /FORMAT/);
     const p3 = planFor(`${root}parser/build/vectors/own_p2wpkh_1in.psbt`, FP);
-    p3.plan.set(base.plan.subarray(WS(0), WS(0) + 220), WS(0));
+    p3.plan.set(base.plan.subarray(WS(0), WS(0) + 522), WS(0));
     refused("a witness script beside a P2WPKH input is refused", p3.plan, p3.prevTxs, /FORMAT/);
     const p4 = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of7_input.psbt`, FP);
-    p4.plan.set(base.plan.subarray(WS(0), WS(0) + 220), WS(1));
+    p4.plan.fill(0, IN(1) + 132, IN(1) + 176);  // its key and sighash type: an input not to be signed
     refused("a witness script for a P2WSH input that is not ours is refused", p4.plan, p4.prevTxs, /FORMAT/);
   }
   {
     // the other shapes multisig_keys accepts: 3-of-3, and a 1-of-1 of 37 bytes, the shortest
     const ours = W.setPlan(fresh()).setPrevTxs(base.prevTxs).review() && W.sign()[0].pubkey;
     const plan = fresh();
-    plan[WS(0) + 1] = 0x53;
+    plan[WS(0) + 2] = 0x53;
     rehash(plan);
     check("a 3-of-3 is signed", W.setPlan(plan).setPrevTxs(base.prevTxs).review().nSign, 1);
     const one = fresh();
-    one.fill(0, WS(0), WS(0) + 220);
-    one.set([37, 0x51, 0x21, ...ours, 0x51, 0xae], WS(0));
+    one.fill(0, WS(0), WS(0) + 522);
+    one.set([37, 0, 0x51, 0x21, ...ours, 0x51, 0xae], WS(0));
     rehash(one);
     check("a 1-of-1 is signed", W.setPlan(one).setPrevTxs(base.prevTxs).review().nSign, 1);
   }
   for (const [what, mutate] of [
-    ["OP_0 as the threshold", (pl) => { pl[WS(0) + 1] = 0x00; }],
-    ["a key push that is not 33 bytes", (pl) => { pl[WS(0) + 2] = 0x20; }],
-    ["a length that is not 3 + 34n", (pl) => { pl[WS(0)] = 104; pl[WS(0) + 105] = 0; }],
-    ["the same key twice", (pl) => { pl.copyWithin(WS(0) + 2 + 34, WS(0) + 2, WS(0) + 2 + 34); }],
+    ["OP_0 as the threshold", (pl) => { pl[WS(0) + 2] = 0x00; }],
+    ["a key push that is not 33 bytes", (pl) => { pl[WS(0) + 3] = 0x20; }],
+    ["a length that is not 3 + 34n", (pl) => { pl[WS(0)] = 104; pl[WS(0) + 106] = 0; }],
+    ["the same key twice", (pl) => { pl.copyWithin(WS(0) + 3 + 34, WS(0) + 3, WS(0) + 3 + 34); }],
   ]) {
     const plan = fresh();
     mutate(plan);
@@ -793,7 +803,7 @@ for (const [what, bad] of [["a bad checksum", "abandon ".repeat(11) + "abandon"]
     }
   }
   try {
-    Q.seedFromSeedQR(new Uint8Array(800), new Uint8Array(300));
+    Q.seedFromSeedQR(new Uint8Array(2800), new Uint8Array(300));
     ok("an oversized SeedQR is refused", false);
   } catch (e) {
     ok("an oversized SeedQR is refused", e instanceof RangeError);
@@ -812,7 +822,7 @@ for (const [what, bad] of [["a bad checksum", "abandon ".repeat(11) + "abandon"]
 
 // --- a seed that does not fit is rejected before anything is written
 try {
-  S.seedFromMnemonic(new Uint8Array(1100).fill(0x78));
+  S.seedFromMnemonic(new Uint8Array(3100).fill(0x78));
   ok("an oversized mnemonic is refused", false);
 } catch (e) {
   ok("an oversized mnemonic is refused", e instanceof RangeError);

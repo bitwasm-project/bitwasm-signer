@@ -38,7 +38,7 @@ static core_sig_t sigs[PLAN_MAX_SIGS];
 /* Anti-exfil, per input: 1 then the coordinator's n, as parser_nonces() lays it out; and Q for each of sigs[] */
 static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_SIGS][33];
 /* a mnemonic or SeedQR || passphrase, a seed, entropy or dice, a multisig setup; always wiped after */
-static uint8_t in[1024];
+static uint8_t in[3072]; /* a 15-key Coldcard setup file is about 2.4 KB */
 static char xpub[CORE_XPUB_MAX], desc[CORE_DESC_MAX];
 static char address[ADDRESS_MAX];
 static char mnemonic[256]; /* a newly made mnemonic, until the host has read it */
@@ -47,10 +47,10 @@ _Static_assert(CORE_MESSAGE_MAX <= sizeof(in), "a message to sign has to fit in 
 static core_message_t message;
 static uint8_t message_sig[65];
 static core_multisig_t multisig;
-static uint8_t cbor[1024]; /* a crypto-account or crypto-output, for parser_ur_encode_cbor() */
+static uint8_t cbor[2048]; /* a crypto-account or crypto-output, for parser_ur_encode_cbor() */
 /* Word indices from the word entry helpers. The final words follow from the words before them, so they
  * are wiped like a mnemonic; filter is the list a host passed in to choose from */
-static uint16_t words_out[2048], filter[(sizeof(in) - BIP39_WORD_MAX) / 2];
+static uint16_t words_out[2048], filter[508];
 
 unsigned char *EXPORT(signer_input)(void) {
     return in;
@@ -250,6 +250,21 @@ int EXPORT(signer_sign)(void) {
 int EXPORT(signer_xpub)(unsigned int purpose, unsigned int account) {
     int rc = core_account_xpub(purpose, account, xpub, desc);
     if (rc) wipe(xpub, sizeof(xpub)), wipe(desc, sizeof(desc));
+    return rc;
+}
+
+/* in holds the path, depth little-endian uint32s; the xpub goes to signer_xpub_output() */
+int EXPORT(signer_path_xpub)(unsigned int depth) {
+    uint32_t path[PLAN_MAX_DEPTH];
+    int rc = CORE_ERR_FORMAT;
+    if (depth <= PLAN_MAX_DEPTH) {
+        for (unsigned int i = 0; i < depth; i++)
+            path[i] = (uint32_t)in[4 * i] | (uint32_t)in[4 * i + 1] << 8 | (uint32_t)in[4 * i + 2] << 16 |
+                      (uint32_t)in[4 * i + 3] << 24;
+        rc = core_path_xpub(path, depth, xpub);
+    }
+    wipe(in, sizeof(in));
+    if (rc) wipe(xpub, sizeof(xpub));
     return rc;
 }
 

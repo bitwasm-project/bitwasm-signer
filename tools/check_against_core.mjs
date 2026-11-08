@@ -26,6 +26,9 @@ import { Signer } from "../signer/hosts/js/signer.mjs";
 // a Bitcoin library of its own — and checked against signer.wasm's own xpub below, so a wrong
 // constant fails loudly instead of quietly testing the wrong key.
 const ACCOUNTS = [
+  { kind: "pkh", close: ")", purpose: 44,
+    tprv: "tprv8fVU32aAEuEPeH1WYx3LhXtSFZTRaFqjbFNPaJZ9R8fCVja44tSaUPZEKGpMK6McUDkWWMvRiVfKR3Wzei6AmLoTNYHMAZ9KtvVTLZZdhvA",
+    xpub: "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj" },
   { kind: "wpkh", close: ")", purpose: 84,
     tprv: "tprv8gGUtTW1HhuYrycHNfewtKXPYsB3CgE8uK733ntLBPGfyDhse352wryMJXvQr4zkNDL3ZBDZvJh5NpkuqyEZtLvNLLNmjJD4UV6dsRECvrC",
     xpub: "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V" },
@@ -43,6 +46,12 @@ const MULTISIG = {
   xpub: "xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf",
   cosigners: ["[3f635a63/48h/0h/0h/2h]tpubDFfBj3CGmAdW4oT1kbwY9bajaFrzRGxoZuH3bfqECrkhhUNBJr6biaHooTNdWP8E7U3mwZdxZDSSvXgp4GvW6tNQ38PzXFX4GB4vp5RLCfW",
               "[b8688df1/48h/0h/0h/2h]tpubDFnc6MoxQh6V2NoQKZmq4a9HFuNxMD2cR785reRSe54JwcYH6KK5NQjAspMUmQp5qXdscseFqD4H3VuRVvNhizP4Ku87N5BfuBUQJGrfe1Y"],
+};
+// BIP48 P2SH-P2WSH, script type 1, of the same three seeds
+const NESTED = {
+  tprv: "tprv8hRqYMHqbXZkAgUrzj8B6NcGcmx29UP4jxbJSXPJUH9mXSKtxcPyFdKnxjCKkD2uBoae7TQ22xZknLTr1rJ5fpFWXWcK4mfkcNzesF4BRfG",
+  cosigners: ["[3f635a63/48h/0h/0h/1h]tpubDFfBj3CGmAdW3kvTz4Q3DsgBhtuH6LJHkHcxXcqYwYuGGtbQeFkhxfVcWdY2mb5ZGG1kdGtGgKunBRRRqtbidwDYYpbcGUGqGVadaFjZQyE",
+              "[b8688df1/48h/0h/0h/1h]tpubDFnc6MoxQh6UxWdbz1NmbDACTCt8nE5f9DyCfGdnMuYXAKqoT3sVMF7LRni7mcYzWZyT3xSqzmXikVgXiq9NwizCJBPpFQEpwk4P4iCrULb"],
 };
 const FINGERPRINT = "73c5da0a";
 const MNEMONIC = "abandon ".repeat(11) + "about";
@@ -101,6 +110,25 @@ for (const [chain, internal] of [[0, false], [1, true]]) {
   const desc = `wsh(sortedmulti(2,${keys.join(",")}))`;
   const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
   imports.push({ desc: `${desc}#${ck}`, timestamp: "now", active: true, internal, range: [0, 20] });
+}
+for (const chain of [0, 1]) {
+  const keys = [`[${FINGERPRINT}/48h/0h/0h/1h]${NESTED.tprv}`, ...NESTED.cosigners].map((k) => `${k}/${chain}/*`);
+  const desc = `sh(wsh(sortedmulti(2,${keys.join(",")})))`;
+  imports.push({ desc: `${desc}#${JSON.parse(cli("getdescriptorinfo", desc)).checksum}`, timestamp: "now", range: [0, 20] });
+}
+// The 2-of-7 at account 1: ours beside the three cosigner seeds at accounts 1 and 3, which plan version 4 signs
+const SEVEN = [
+  "[73c5da0a/48h/0h/1h/2h]tprv8hgJMgZgpSfng3vHGtMcwTy2yp17CgsTDWmJ2ietTeU1X5kpo8NAPrkPMkex8jbuYACmCN1cnSLtnfNPRM5JNvwSRSL4o4UYVHAQK9gSaYp",
+  "[3f635a63/48h/0h/1h/2h]tpubDEimRb6AGdvwf9KvpAhPXVjcPEC4WMGd6sYxoFuBz5BDa9WPv9HEuWUpQReRaw8QPoid3YUuwGjbJpQTNTgGp7yWZRftQKwT5Xt1KUg3WW3",
+  "[3f635a63/48h/0h/3h/2h]tpubDFm5vybrujRUseq3K2V64rXf5CwZbGNEVa8vJyXMpJtBEr1EXscWnzTyXrYHgW4TaH5LFzED3JSbtZb4Evq1D8UGrMfadCiqxY7DGzEXZXF",
+  "[b8688df1/48h/0h/1h/2h]tpubDEXyhYATj1gJBNvKKZQqmSoP8Ssp3toQvZDHQoUZQKX94vL12XM1os1eDubT96xKxFzKfnKDkEJRS7MkhkT7E6Me1RCvgDVNasVeBk5pH3q",
+  "[b8688df1/48h/0h/3h/2h]tpubDEicJMbVMWWby6C9DdkBU12Xzohrdr5AZ9jhM6MBVo3GE1okiNCfU2hiyCLdskYNrGtZ4qdE3ETzf6CKBFZ1yKPqASpwe5wLCwKK9aB9Fsf",
+  "[28645006/48h/0h/1h/2h]tpubDFUKUNP4rgzsKSjivDNjdzZkdBq26u6whYYGdvaV9V4rA23ADF6MK6sCTmYzxC9XjuGaHoRhhewKSKwX5FGbTXcRTPjeBTTCpGmuujJKCYC",
+  "[28645006/48h/0h/3h/2h]tpubDEX3j4q9gtD3aRXHsHE374qRxGd6RxJuXw7KqbiC9Pc7YoAK8eAVVvZF3Dw3L2M3Ki4Z35GR6SR8df4GYFFA5TXZq2gPJjMxjhouqgLgjvE",
+];
+for (const chain of [0, 1]) {
+  const desc = `wsh(sortedmulti(2,${SEVEN.map((k) => `${k}/${chain}/*`).join(",")}))`;
+  imports.push({ desc: `${desc}#${JSON.parse(cli("getdescriptorinfo", desc)).checksum}`, timestamp: "now", range: [0, 20] });
 }
 // or_d, as parser/tools/gen_vectors.py builds it: {0} ours, on chains 2 and 3 when it is on the recovery path, and
 // the cosigners at 0 and 1: the two above, "letter advice ... above", then the first two at account 1; {6} ours again
@@ -241,7 +269,7 @@ const pin = { sha256: createHash("sha256").update(signerWasm).digest("hex") };
       const core = Buffer.from(cli("signmessagewithprivkey", wif(a.tprv, chain, index), text), "base64");
       s.messageReview(new TextEncoder().encode(text), { purpose: a.purpose, chain, index });
       const ours = Buffer.from(s.messageSign());
-      if (!ours.subarray(1).equals(core.subarray(1)) || ours[0] !== core[0] + (a.purpose === 84 ? 8 : 4)) {
+      if (!ours.subarray(1).equals(core.subarray(1)) || ours[0] !== core[0] + (a.purpose === 84 ? 8 : a.purpose === 49 ? 4 : 0)) {
         console.error(`m/${a.purpose}'/0'/0'/${chain}/${index} "${text.slice(0, 20)}": ours ${ours.toString("base64")}, Core ${core.toString("base64")}`);
         process.exit(1);
       }

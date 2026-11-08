@@ -6,8 +6,8 @@
 // take that on trust. See ../../docs/abi.md.
 
 const MAGIC = 0x4e4c5042; // "BPLN"
-const ABI_VERSION = 3;
-const PLAN_SIZE = 8536;
+const ABI_VERSION = 4;
+const PLAN_SIZE = 13368;
 
 /**
  * The exports parser.wasm provides. Declared so that a typo in a name is a type error rather than a

@@ -24,7 +24,7 @@ const UR_ERR_MISMATCH = -4, UR_ERR_TYPE = -7;
 // The defect in invalid_with_msg[15] is the value length of PSBT_IN_MUSIG2_PARTIAL_SIG (0x1c);
 // its message omits musig2
 const MUSIG2_BY_FIELD = new Set([15]);
-const PLAN_SIZE = 8536, WSCRIPTS = 5016, WSCRIPT_SIZE = 220;
+const PLAN_SIZE = 13368, WSCRIPTS = 5016, WSCRIPT_SIZE = 522;
 
 const moduleBytes = readFileSync(WASM);
 const runtime = process.env.PARSER_RUNTIME ?? "v8";
@@ -106,7 +106,7 @@ class Parser {
         spk: hex(b.slice(o + 49, o + 49 + b[o + 48])),
         key: keypath(o + 132),
         sighash_type: b[o + 172],
-        wscript: hex(b.slice(WSCRIPTS + WSCRIPT_SIZE * i + 1, WSCRIPTS + WSCRIPT_SIZE * i + 1 + b[WSCRIPTS + WSCRIPT_SIZE * i])),
+        wscript: hex(b.slice(WSCRIPTS + WSCRIPT_SIZE * i + 2, WSCRIPTS + WSCRIPT_SIZE * i + 2 + (b[WSCRIPTS + WSCRIPT_SIZE * i] | b[WSCRIPTS + WSCRIPT_SIZE * i + 1] << 8))),
       };
     });
     const outputs = [...Array(nOut)].map((_, i) => {

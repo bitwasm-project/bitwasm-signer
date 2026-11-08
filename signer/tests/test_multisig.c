@@ -1,5 +1,5 @@
-/* Registering a P2WSH sortedmulti or multi wallet: the three formats it comes in, what makes one refused, and the
- * descriptor and addresses it gives back, against Bitcoin Core's getdescriptorinfo and deriveaddresses */
+/* Registering a P2WSH or P2SH-P2WSH sortedmulti or multi wallet: the three formats it comes in, what makes one refused,
+ * and the descriptor and addresses it gives back, against Bitcoin Core's getdescriptorinfo and deriveaddresses */
 #include <stdio.h>
 #include <string.h>
 #include "core.h"
@@ -132,6 +132,49 @@ static int checks, failures;
     "[b8688df1/48h/0h/1h/"                                                                                             \
     "2h]"                                                                                                              \
     "xpub6EAMBJLn1jiquajTsNRkZXU1oKnA4WJMNvcz4FRR4QmFKdfHxJVvfRLoysWfcc16AMTR4CoMD8UNjvs9JtbsLeuLwpTczgq8zuuERnp8YZF"
+/* seven more of BIP39's test vectors at m/48'/0'/0'/2', for 15 keys: the most CHECKMULTISIG takes in P2SH */
+#define K6                                                                                                             \
+    "[b760aecd/48h/0h/0h/2h]"                                                                                          \
+    "xpub6FMYEFj8esWqvZJGaYfqtj58RFHnaaLdkQQy7sWWbYp8QEUCzDKaZzCypZ3K2z2vkpb95hzrHwyhdHWZsUVbxKQEuNDpybGqx3fStLCp6fH"
+#define K7                                                                                                             \
+    "[61796c57/48h/0h/0h/2h]"                                                                                          \
+    "xpub6Euf9JXaDkJm7QFuv7XZrNEeCrCYD9DscVyEaVtocumutNwyU9TwLQefqG3kedZDHAGsE27cS3fi3fcrKMdMuupUnM9nqsJonQaJb3gE3J7"
+#define K8                                                                                                             \
+    "[8a682d68/48h/0h/0h/2h]"                                                                                          \
+    "xpub6F3gdFiDsDhwUW25JiPTto3Eh6hDhYKbvWspGmofmny1fGBB8NFbdUG1V9WzNEFS6f1QNzWFxhF5LF4szYw8vBGUnYLXKP4eUmVde5ofBJW"
+#define K9                                                                                                             \
+    "[dd1fad4d/48h/0h/0h/2h]"                                                                                          \
+    "xpub6Efuc1pJPSz3NAnQ1m1NcavRhakrwmVFbB911uLDoYR4w5LCEGebVf5sLG5rfrVNp8rSrPFKF4HTChb3pTFcSnhKVv5i21ZrzPd7ZxVbXRS"
+#define K10                                                                                                            \
+    "[bc2b7c36/48h/0h/0h/2h]"                                                                                          \
+    "xpub6DwKBqfLmchUG9HWEQvZtrBVFD1RYaLYj4sWgMFYSeg35z5wSMaB9ysQNDovbBK27WY88w1bjQ8yetk3eT2mQhMJCGYYPLfgmNuL3kCd9nJ"
+#define K11                                                                                                            \
+    "[f57f296d/48h/0h/0h/2h]"                                                                                          \
+    "xpub6FM2Wanc37jHvxR7BNMTXDsRqBke2kHPJRn3UQdXG4cAR6ZYVWVAjkASDVAfqwrUt5EFBxw6Lb9KPC8k12ZHih8V8FCrdWq6FoNDEw2RubK"
+#define K12                                                                                                            \
+    "[86d722c6/48h/0h/0h/2h]"                                                                                          \
+    "xpub6DYhA3SLeDUmzpyTnD7Upp8iAhvX3xmcafwxjqiTNj9kUm2p8AAUtHsYr8f2r6mAFQngm7jEZXdx1W3vREJ6FPzvAPytbJHgGmdWvLsy9uu"
+#define SORTED15                                                                                                       \
+    "wsh(sortedmulti(8," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*," K4 "/<0;1>/*," K5 "/<0;1>/*," K1A \
+    "/<0;1>/*," K2A "/<0;1>/*," K6 "/<0;1>/*," K7 "/<0;1>/*," K8 "/<0;1>/*," K9 "/<0;1>/*," K10 "/<0;1>/*," K11        \
+    "/<0;1>/*," K12 "/<0;1>/*))"
+/* Core's checksum and addresses; the 513-byte witness scripts hash to them */
+#define SORTED15_SUM "y3pedyyk"
+#define SORTED15_RECEIVE0 "bc1qr7j9mk5n0ejkvpnpdpvh2j2psha49jjgdax7fee7gq3tpsqaqwqs5tfl9k"
+#define SORTED15_CHANGE0 "bc1quq5ru3f8jv6tz06ay7546vt2wwt6y32nty40w55acv47cgs03csshk9qxm"
+#define SORTED15_RECEIVE0_WS                                                                                           \
+    "5821021613b2cb108a73ae0c68e1f3f3e70843fdcd441fa65d5b93e8874d00fb594fe7210254689c4a585b8f3d9ddea8e9e68d0e8f49f757" \
+    "09fa6e7d075657573815958a8121027822149dc5a973fa7f8e355961507aa6c4d6e0cfa7fc5a52acdf61c4708caade21027fea83cba9510d" \
+    "4c21bf9fa7fca1d10f9e116a923653830d9c1dec41b70ea30c21028e818df63d6f2dce9308d7455fd4c85cbb39d703608b8fbed647d75e26" \
+    "2322d82102a6dd7f84904c4dd24d242cd35053595f911d48fd4f07cfc78420895e12704c892102b02bb64e8c55f248634b53a3875a53c331" \
+    "75a09abb155e7786915e1efa55bcdf2102e056f325e36712a8042ec9919ba86809411ea691816aa7589bceb73c011129942103229cb34fe3" \
+    "eb1af43b6dd2a2e1b31681039b71d9303ded36b3128ef359e379bd21032c612ce1300e6892508903ff7141a9c608a18ac95423239f33c57b" \
+    "5b6e143ad4210346323529b0de6886062aaf826b99a96ddb81cdc58b591da8307fa1f166491b822103a9239130a783b0103e413697038105" \
+    "4c1b29aee37115d62879b3db8af5ee38162103ce6a9b2fa29ab6f5507a66e1f8d444726a5799b168ae8529a845fdc820d2f9ca2103dc1953" \
+    "c2756c7c58d4f48ca1bbba767f414fd236bf4d662b67721ac626c514e02103f9c2483ba111f98f01a51e748c75b3ab37429288c31526ee15" \
+    "453482631aed215fae"
+#define SORTED15_RECEIVE0_SPK "00201fa45dda937e65660661685975494185fb52ca486f4de4e73e4022b0c01d0381"
+#define SORTED15_CHANGE0_SPK "0020e0283e45279334b13f5d27a95d316a7397a24553592af7529dc32bec220f8e21"
 #define EK "wsh(or_d(multi(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*),and_v(v:pkh(" K3 "/<0;1>/*),after(900000))))"
 #define EK_SUM "n62ygf4f"
 #define EK_RECEIVE0 "bc1qfyy5qqadpynnnkr9qv0w2mdaq5ksvplv87mds7y7msyvxfvwx4gsqdg548"
@@ -176,6 +219,36 @@ static int checks, failures;
 #define SELF_RECEIVE0_SPK "002054ede26b0a7790a603a7acfd43e3cf071ebf42fb3b4d9646c6dc2724c10180fd"
 #define SELF_CHANGE0_SPK "00207705e6ceb78c747993ec00b89df543549ad1f65696da380d76a4d91bffb632dd"
 
+/* P2SH-P2WSH at m/48'/0'/0'/1', BIP48's script type 1, for the same three seeds. Checksums and addresses from Core's
+ * getdescriptorinfo and deriveaddresses; the scripts hash to its addresses */
+#define XPUBS0                                                                                                         \
+    "xpub6DkFAXWQ2dHxnMKoSBogHrw1rgNJKR4umdbnNVNTYeCGcduxWnNUHgGptqEQWPKRmeW4Zn4FHSbLMBKEWYaMDYu47Ytg6DdFnPNt8hwn5mE"
+#define XPUBS1                                                                                                         \
+    "xpub6FHZCoNb3tg3mxjcXsQx1xLpNmod6woECf2fB4nQbe9NXbvha2ucpDpnGbTFF68KUMUr1hNQ9E5jVEvpT2kUkVmFVDrJawcbgXzDpJc2hkF"
+#define XPUBS2                                                                                                         \
+    "xpub6FQya7zGhR92giSkXpPgPHpq85nUnqabbbNuJiae1zndR3B6Nq2QCoSWBkdLF7bkifSYSNvyTfhg4KBvKyJ94HXuEaeWZsabMnTyJiPz21N"
+#define KS0 "[73c5da0a/48h/0h/0h/1h]" XPUBS0
+#define KS1 "[3f635a63/48h/0h/0h/1h]" XPUBS1
+#define KS2 "[b8688df1/48h/0h/0h/1h]" XPUBS2
+#define SH "sh(wsh(sortedmulti(2," KS0 "/<0;1>/*," KS1 "/<0;1>/*," KS2 "/<0;1>/*)))"
+#define SH_SUM "exruqzs6"
+#define SH_RECEIVE0 "36ZrDZ9nkw5G83zYBmzQneVjErgkfN6RDD"
+#define SH_RECEIVE7 "3M5KmwHJv29PdGPz5HY1v6Uh1Qtx6sxqnb"
+#define SH_CHANGE0 "3EZGPrkM4bZDYuNSTmBZXDEaEConRxFFgn"
+#define SH_RECEIVE0_WS                                                                                                 \
+    "522102cb377cd72240ed59a548aa1c60d1103327f1812148296ccafbe9fe4b77c4dbe02103abe5ccc0a6ddf20e02e27ca4829a4bcf288849" \
+    "f5d137db19559dd2ab23236dbe2103e08f6cdd489c655b3e60bd22cdad3567f803f58840aa4f7c3195504e6c8adc5553ae"
+#define SH_RECEIVE0_SPK "a914357d9d4c058fcc8b1aa24566d3d6521d43ed49a887"
+#define SH_RECEIVE0_P2WSH "00204a073e18a0b435e895960e2e9654fec4cd3f28dece0a8cb84cc881d98fb89d43"
+#define SH_RECEIVE0_OURS "03abe5ccc0a6ddf20e02e27ca4829a4bcf288849f5d137db19559dd2ab23236dbe"
+#define SH_CHANGE0_WS                                                                                                  \
+    "522102161bf5347a3583e9aef5a8987eb502fc419e514dd0a5860b61c11158749ded1d21032eefcba842d8a95c584497528af480b6dcbd0a" \
+    "3c1c8d611a5e70b278cad330092103be21045dc850b1d34905762de9403d7c117b7c82c86d920c0c1090f86f02d29553ae"
+#define SH_CHANGE0_SPK "a9148d2263218fb4fc4cdecb6c607e036b3c83dde77787"
+#define SH_MULTI "sh(wsh(multi(2," KS1 "/<0;1>/*," KS0 "/<0;1>/*," KS2 "/<0;1>/*)))"
+#define SH_MULTI_SUM "4psenw97"
+#define SH_MULTI_CHANGE0 "3LNSgUe93XWXrT21JP4wtazWVWsJWCcghL"
+
 static core_multisig_t ms;
 
 static int load(const char *text) {
@@ -200,13 +273,73 @@ static plan_t liana_plan(const char *ws, const char *spk, uint32_t chain, const 
     memset(in->prev_txid, 0x11, 32);
     in->amount = 100000, in->sequence = 0xfffffffd, in->key = key, in->sighash_type = 1;
     in->spk.len = (uint8_t)unhex(spk, in->spk.bytes);
-    p.wscripts[0].len = (uint8_t)unhex(ws, p.wscripts[0].bytes);
+    p.wscripts[0].len = (uint16_t)unhex(ws, p.wscripts[0].bytes);
     p.outputs[0].amount = 60000;
     p.outputs[0].spk.len = (uint8_t)unhex("0014751e76e8199196d454941c45d1b3a323f1433bd6", p.outputs[0].spk.bytes);
     p.outputs[1].amount = 39000;
     p.outputs[1].spk.len = (uint8_t)unhex(change_spk, p.outputs[1].spk.bytes);
     p.outputs[1].key = key, p.outputs[1].key.path[4] = change;
     return p;
+}
+
+/* sh(wsh()): its formats, its base58 addresses, and an input of it signed with the P2SH nesting checked */
+static void nested(void) {
+    plan_t p;
+    core_review_t r;
+    core_sig_t sigs[PLAN_MAX_SIGS];
+    unsigned int n;
+    uint8_t cbor[1024], ours[33];
+    char addr[ADDRESS_MAX], lower[] = SH_RECEIVE7;
+    int len;
+
+    CHECK(load(SH) == CORE_OK && ms.kind == CORE_WALLET_SH && !strcmp(ms.receive, SH_RECEIVE0),
+          "sh(wsh(sortedmulti())) and its first receive address: %s", ms.receive);
+    CHECK(!strcmp(ms.descriptor, SH "#" SH_SUM), "the descriptor with Core's checksum: %s", ms.descriptor);
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, SH_CHANGE0), "change 0 is Core's: %s", addr);
+    CHECK(core_multisig_find_address(SH_RECEIVE7, strlen(SH_RECEIVE7), 10) == 7, "receive 7 found");
+    for (char *c = lower; *c; c++) *c = *c >= 'A' && *c <= 'Z' ? (char)(*c + 32) : *c;
+    CHECK(core_multisig_find_address(lower, strlen(lower), 10) == -CORE_ERR_NOT_FOUND,
+          "base58 in lower case, not found");
+    CHECK(core_multisig_find_address(RECEIVE0, strlen(RECEIVE0), 10) == -CORE_ERR_NOT_FOUND, "a bech32 one, not found");
+    len = core_multisig_cbor(cbor, sizeof(cbor));
+    CHECK(len > 0 && cbor[0] == 0xd9 && cbor[1] == 0x01 && cbor[2] == 0x90 && cbor[3] == 0xd9 && cbor[4] == 0x01 &&
+              cbor[5] == 0x91,
+          "crypto-output starts sh (400), wsh (401)");
+    CHECK(core_multisig_load_cbor(cbor, (size_t)len, &ms) == CORE_OK && !strcmp(ms.descriptor, SH "#" SH_SUM),
+          "and registers the same wallet");
+    CHECK(load("Policy: 2 of 3\nDerivation: m/48'/0'/0'/1'\nFormat: P2SH-P2WSH\n73C5DA0A: " XPUBS0 "\n3F635A63: " XPUBS1
+               "\nB8688DF1: " XPUBS2) == CORE_OK &&
+              !strcmp(ms.descriptor, SH "#" SH_SUM),
+          "a setup file for P2SH-P2WSH");
+    CHECK(load("Policy: 2 of 3\nDerivation: m/48'/0'/0'/1'\nFormat: P2WSH-P2SH\n73C5DA0A: " XPUBS0 "\n3F635A63: " XPUBS1
+               "\nB8688DF1: " XPUBS2) == CORE_OK &&
+              !strcmp(ms.receive, SH_RECEIVE0),
+          "and one that writes it P2WSH-P2SH");
+    CHECK(load(SH_MULTI) == CORE_OK && !strcmp(ms.descriptor, SH_MULTI "#" SH_MULTI_SUM) &&
+              core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, SH_MULTI_CHANGE0),
+          "sh(wsh(multi())), its change 0 Core's: %s", addr);
+    CHECK(load("sh(wsh(or_d(pk(" KS0 "/<0;1>/*),and_v(v:pkh(" KS1 "/<0;1>/*),older(144)))))") == CORE_ERR_FORMAT,
+          "an or_d in sh(), refused");
+
+    CHECK(load(SH) == CORE_OK, "loaded again");
+    p = liana_plan(SH_RECEIVE0_WS, SH_RECEIVE0_SPK, 0, SH_CHANGE0_SPK, 1);
+    p.inputs[0].key.path[3] = p.outputs[1].key.path[3] = 1 | 0x80000000u;
+    unhex(SH_RECEIVE0_OURS, ours);
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[0] == CORE_OUT_EXTERNAL &&
+              r.owner[1] == CORE_OUT_CHANGE,
+          "a P2SH-P2WSH input to sign, its change the wallet's");
+    CHECK(core_sign(&p, NULL, sigs, &n) == CORE_OK && n == 1 && !memcmp(sigs[0].pubkey, ours, 33),
+          "signed with our key in it");
+    p.inputs[0].spk.len = (uint8_t)unhex(SH_RECEIVE0_P2WSH, p.inputs[0].spk.bytes);
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_WALLET, "the same script as P2WSH, not the wallet registered");
+    p = liana_plan(SH_CHANGE0_WS, SH_RECEIVE0_SPK, 0, SH_CHANGE0_SPK, 1);
+    p.inputs[0].key.path[3] = 1 | 0x80000000u;
+    CHECK(core_review(&p, NULL, &r) == CORE_ERR_NOT_OURS, "a witness script the P2SH does not hash to");
+    core_multisig_unload();
+    p = liana_plan(SH_RECEIVE0_WS, SH_RECEIVE0_SPK, 0, SH_CHANGE0_SPK, 1);
+    p.inputs[0].key.path[3] = p.outputs[1].key.path[3] = 1 | 0x80000000u;
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 && r.owner[1] == CORE_OUT_EXTERNAL,
+          "with no wallet registered, still signed; the change not ours");
 }
 
 static void liana(void) {
@@ -338,7 +471,7 @@ static void or_d_multi(void) {
           "two 2-of-3s, ours on the recovery path: %s", ms.receive);
     p = liana_plan(MX_RECEIVE0_WS, MX_RECEIVE0_SPK, 2, MX_CHANGE0_SPK, 3);
     p.locktime = 1700000000;
-    CHECK(p.wscripts[0].len == PLAN_MAX_WSCRIPT && core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 &&
+    CHECK(p.wscripts[0].len == 219 && core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 &&
               r.owner[1] == CORE_OUT_CHANGE,
           "a 219-byte witness script signed on the recovery path");
     CHECK(core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
@@ -367,13 +500,13 @@ static void or_d_multi(void) {
           "a 2-of-2 with one recovery key");
 }
 
-/* Up to six keys, sorted or in multi()'s order, as upstream SeedSigner takes them */
+/* Up to 15 keys, sorted or in multi()'s order, as upstream SeedSigner takes them */
 static void wide(void) {
     core_review_t r;
     core_sig_t sigs[PLAN_MAX_SIGS];
     unsigned int n_sigs;
     plan_t p;
-    uint8_t cbor[1024];
+    uint8_t cbor[2048];
     char addr[ADDRESS_MAX], canonical[CORE_MULTISIG_DESC_MAX];
     int n;
 
@@ -414,9 +547,24 @@ static void wide(void) {
     CHECK(core_review(&p, NULL, &r) == CORE_ERR_WALLET, "the same keys sorted are not this wallet's input");
     core_multisig_unload();
 
+    CHECK(load(SORTED15) == CORE_OK && ms.n == 15 && ms.threshold == 8 && ms.ours == 0 &&
+              !strcmp(ms.receive, SORTED15_RECEIVE0) && !strcmp(ms.descriptor, SORTED15 "#" SORTED15_SUM),
+          "an 8-of-15 sortedmulti: %s", ms.receive);
+    CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, SORTED15_CHANGE0), "its change 0: %s", addr);
+    p = liana_plan(SORTED15_RECEIVE0_WS, SORTED15_RECEIVE0_SPK, 0, SORTED15_CHANGE0_SPK, 1);
+    CHECK(p.wscripts[0].len == 513 && core_review(&p, NULL, &r) == CORE_OK && r.n_sign == 1 &&
+              r.owner[1] == CORE_OUT_CHANGE && core_sign(&p, NULL, sigs, &n_sigs) == CORE_OK && n_sigs == 1 &&
+              !memcmp(sigs[0].pubkey, p.wscripts[0].bytes + 2 + 13 * 34, 33),
+          "a 513-byte witness script signed by our key, 14th once sorted");
+    n = core_multisig_cbor(cbor, sizeof(cbor));
+    CHECK(n > 0 && core_multisig_load_cbor(cbor, (size_t)n, &ms) == CORE_OK && ms.n == 15 &&
+              !strcmp(ms.descriptor, SORTED15 "#" SORTED15_SUM),
+          "its crypto-output reads back");
+    core_multisig_unload();
     CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*," K3 "/<0;1>/*," K4 "/<0;1>/*," K5
-               "/<0;1>/*," K1A "/<0;1>/*))") == CORE_ERR_FORMAT,
-          "seven keys");
+               "/<0;1>/*," K1A "/<0;1>/*," K2A "/<0;1>/*," K6 "/<0;1>/*," K7 "/<0;1>/*," K8 "/<0;1>/*," K9
+               "/<0;1>/*," K10 "/<0;1>/*," K11 "/<0;1>/*," K12 "/<0;1>/*," XPUB3 "/<0;1>/*))") == CORE_ERR_FORMAT,
+          "16 keys");
     CHECK(load("wsh(multi(3," K0 "/<0;1>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT, "multi() above its keys");
     CHECK(load("wsh(multi(2," K0 "/<2;3>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT, "multi() keeps receive 0, change 1");
 }
@@ -551,7 +699,6 @@ int main(void) {
     CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K0 "/<0;1>/*))") == CORE_ERR_FORMAT, "a key twice");
     CHECK(load("wsh(sortedmulti(4," K0 "/<0;1>/*," K1 "/<0;1>/*," K2 "/<0;1>/*))") == CORE_ERR_FORMAT,
           "a threshold above the keys");
-    CHECK(load("sh(wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/<0;1>/*)))") == CORE_ERR_FORMAT, "P2SH-P2WSH");
     CHECK(load("wsh(sortedmulti(2," K0 "/<0;1>/*," K1 "/2/*))") == CORE_ERR_FORMAT, "a child other than 0 or 1");
     CHECK(load("wsh(sortedmulti(2,[73c5da0a/48h/0h/0h/2]" XPUB0 "/<0;1>/*," K1 "/<0;1>/*))") == CORE_ERR_FORMAT,
           "an unhardened origin step");
@@ -584,6 +731,7 @@ int main(void) {
               cbor[8] == 0x84,
           "crypto-account: our fingerprint and four outputs");
     CHECK(core_account_cbor(0, cbor, 100) == -CORE_ERR_FORMAT, "a buffer too small");
+    nested();
     liana();
     or_d_variants();
     or_d_multi();

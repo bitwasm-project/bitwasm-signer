@@ -158,9 +158,9 @@ Offsets are what the accessors return today. **Do not hard-code them**; call the
 | Buffer | Offset | Size |
 |---|---:|---:|
 | input | 17,792 | 32,768 |
-| plan | 50,560 | 8,536 |
-| sigs | 59,104 | 3,456 (32 × 108) |
-| output | 64,144 | 38,912 |
+| plan | 50,560 | 13,368 |
+| sigs | 63,936 | 3,456 (32 × 108) |
+| output | 68,976 | 38,912 |
 
 ## `plan_t`
 
@@ -168,16 +168,16 @@ The parser's whole output. No pointers and no `long`, so wasm32, rv32 and 64-bit
 
 ```c
 #define PLAN_MAGIC       0x4e4c5042u /* "BPLN" */
-#define PLAN_VERSION     3
+#define PLAN_VERSION     4
 #define PLAN_MAX_INPUTS  16
 #define PLAN_MAX_OUTPUTS 16
 #define PLAN_MAX_SPK     83
 #define PLAN_MAX_DEPTH   8
 #define PLAN_MAX_SIGS    32  /* two per input: an or_d can hold two of our keys */
-#define PLAN_MAX_WSCRIPT 219 /* an or_d of two three-key multis and a timelock */
+#define PLAN_MAX_WSCRIPT 520 /* a redeem script's most, and multi() of 15 keys */
 
 typedef struct { uint8_t len; uint8_t bytes[83]; } plan_script_t;          /* 84 */
-typedef struct { uint8_t len; uint8_t bytes[219]; } plan_wscript_t;        /* 220 */
+typedef struct { uint16_t len; uint8_t bytes[520]; } plan_wscript_t;      /* 522 */
 
 typedef struct {
     uint8_t  depth;         /* 0 = this is not ours */
@@ -209,7 +209,7 @@ typedef struct {
     plan_input_t  inputs[16];
     plan_output_t outputs[16];
     plan_wscript_t wscripts[16]; /* a P2WSH input's witness script, only for one to be signed */
-} plan_t;                                                                  /* 8536 */
+} plan_t;                                                                  /* 13368 */
 ```
 
 Field offsets a non-C host needs:
@@ -217,14 +217,14 @@ Field offsets a non-C host needs:
 | | offset | |
 |---|---:|---|
 | `plan_t.magic` | 0 | u32, must be `0x4e4c5042` |
-| `plan_t.version` | 4 | u32, must be 3 |
+| `plan_t.version` | 4 | u32, must be 4 |
 | `plan_t.tx_version` | 8 | i32 |
 | `plan_t.locktime` | 12 | u32 |
 | `plan_t.n_inputs` | 16 | u8 |
 | `plan_t.n_outputs` | 17 | u8 |
 | `plan_t.inputs` | 24 | stride 176 |
 | `plan_t.outputs` | 2,840 | stride 136 |
-| `plan_t.wscripts` | 5,016 | stride 220: 1 byte length + 219 bytes |
+| `plan_t.wscripts` | 5,016 | stride 522: 2-byte length + 520 bytes |
 | `plan_input_t.amount` | 40 | u64 little-endian |
 | `plan_input_t.spk` | 48 | 1 byte length + 83 bytes |
 | `plan_input_t.key` | 132 | |
@@ -237,8 +237,9 @@ Field offsets a non-C host needs:
 
 All integers are little-endian, as in the WebAssembly linear memory.
 
-A host **must** check `magic == 0x4e4c5042` and `version == 3` before trusting the rest. Version 2 added
-`wscripts` after `outputs`; version 3 widened each from 105 to 219 bytes. Every earlier offset is unchanged.
+A host **must** check `magic == 0x4e4c5042` and `version == 4` before trusting the rest. Version 2 added
+`wscripts` after `outputs`; version 3 widened each from 105 to 219 bytes, and version 4 to 520 with a 2-byte
+length, for 15 keys. Every earlier offset is unchanged.
 
 ## `plan_sig_t`
 
@@ -333,7 +334,7 @@ The parser is untrusted. It shapes bytes into a struct; it does not decide anyth
 
 ## Versioning
 
-`plan_t.version` is `3`; version 2 held witness scripts of up to 105 bytes, and version 1 was the 5,016-byte
+`plan_t.version` is `4`; version 3 held witness scripts of up to 219 bytes, version 2 of up to 105, and version 1 was the 5,016-byte
 layout without `wscripts`. Adding a field,
 changing a size, or changing a meaning bumps it.
 A host that sees an unknown version must refuse rather than guess.

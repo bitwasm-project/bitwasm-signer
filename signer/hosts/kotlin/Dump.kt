@@ -17,7 +17,7 @@ fun main(args: Array<String>) {
     fun call(n: String, vararg a: Long) = p.export(n).apply(*a)?.firstOrNull()?.toInt() ?: 0
     mem.write(call("parser_input"), psbt)
     require(call("parser_parse", psbt.size.toLong(), 0x73c5da0aL) == 0)
-    val plan = mem.readBytes(call("parser_plan"), 8536)
+    val plan = mem.readBytes(call("parser_plan"), 13368)
     val nIn = plan[16].toInt() and 0xff
     val inputAt = call("parser_input")
     val prev = (0 until nIn).map { i ->
@@ -38,6 +38,7 @@ fun main(args: Array<String>) {
     println("found ${found.chain} ${found.index}")
     println("address ${s.address(purpose = 49, account = 2, chain = 1, index = 7)}")
     println("desc ${s.xpub(purpose = 86, account = 1).descriptor}")
+    println("path xpub ${s.pathXpub(longArrayOf(48L + (1L shl 31), 1L + (1L shl 31), 1L shl 31, 2L + (1L shl 31), 7L))}")
     println("dice ${String(s.mnemonicFromDice("3".repeat(99).toByteArray()))}")
     println("seedqr ${String(s.seedQRFromMnemonic(("abandon ".repeat(11) + "about").toCharArray()))}")
     println("bip85 ${String(s.bip85Mnemonic(words = 24, index = 3))}")

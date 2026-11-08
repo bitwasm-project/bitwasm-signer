@@ -6,16 +6,15 @@
 //! from the documentation, and nothing here may move without that documentation changing.
 
 pub const MAGIC: u32 = 0x4e4c_5042; // "BPLN"
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 pub const MAX_INPUTS: usize = 16;
 pub const MAX_OUTPUTS: usize = 16;
 pub const MAX_SPK: usize = 83; // the standard OP_RETURN limit; P2TR and P2WSH need 34
 pub const MAX_DEPTH: usize = 8;
 // two per input at most: an or_d wallet can hold two of our keys, one on each path
 pub const MAX_SIGS: usize = 2 * MAX_INPUTS;
-// or_d of two three-key multis: 2 x (OP_m, 3 x (push + 33), OP_n, CHECKMULTISIG), IFDUP NOTIF, a 5-byte
-// timelock, CSV ENDIF
-pub const MAX_WSCRIPT: usize = 219;
+// the most a redeem script may be, which also holds multi() of 15 keys: OP_m, 15 x (push + 33), OP_n, CHECKMULTISIG
+pub const MAX_WSCRIPT: usize = 520;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -54,6 +53,16 @@ impl Script {
         self.len == 34 && self.bytes[0] == 0x51 && self.bytes[1] == 32
     }
 
+    /// P2PKH, which the signer signs only with every input's previous transaction to prove the amounts.
+    pub fn is_p2pkh(&self) -> bool {
+        self.len == 25
+            && self.bytes[0] == 0x76
+            && self.bytes[1] == 0xa9
+            && self.bytes[2] == 20
+            && self.bytes[23] == 0x88
+            && self.bytes[24] == 0xac
+    }
+
     /// `0020{32 bytes}`. That the witness script hashes to it, and is a multisig with our key, is
     /// for the signer to establish.
     pub fn is_p2wsh(&self) -> bool {
@@ -64,7 +73,7 @@ impl Script {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct WScript {
-    pub len: u8,
+    pub len: u16,
     pub bytes: [u8; MAX_WSCRIPT],
 }
 
@@ -166,4 +175,4 @@ const _: () = assert!(core::mem::size_of::<Input>() == 176);
 const _: () = assert!(core::mem::size_of::<Output>() == 136);
 const _: () = assert!(core::mem::offset_of!(Plan, inputs) == 24);
 const _: () = assert!(core::mem::offset_of!(Plan, wscripts) == 5016);
-const _: () = assert!(core::mem::size_of::<Plan>() == 8536);
+const _: () = assert!(core::mem::size_of::<Plan>() == 13368);

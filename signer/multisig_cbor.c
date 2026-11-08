@@ -226,7 +226,9 @@ int ms_cbor_descriptor(const uint8_t *cbor, size_t len, int testnet, char out[MS
     int have_threshold = 0, have_keys = 0;
     unsigned int major;
 
-    /* 407 sortedmulti, 406 multi */
+    /* 407 sortedmulti, 406 multi, in 401 wsh and that perhaps in 400 sh */
+    wallet.sh = (uint8_t)tag(&r, 400);
+    if (!wallet.sh) r.i = 0;
     if (!tag(&r, 401) || !head(&r, &major, &v) || major != 6 || (v != 406 && v != 407) || !map_start(&r, &n)) return 0;
     wallet.kind = v == 406 ? MS_MULTI : MS_SORTEDMULTI;
     for (uint64_t i = 0; i < n; i++) {

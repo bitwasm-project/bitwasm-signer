@@ -32,7 +32,7 @@ private class PlanSource(parserWasm: ByteArray) {
         mem.write(call("parser_input"), psbt)
         val rc = call("parser_parse", psbt.size.toLong(), fingerprint.toLong())
         require(rc == 0) { "parser refused the PSBT: $rc" }
-        val plan = mem.readBytes(call("parser_plan"), 8536)
+        val plan = mem.readBytes(call("parser_plan"), 13368)
         val nIn = plan[16].toInt() and 0xff
         val inputAt = call("parser_input")
         return plan to (0 until nIn).map { i ->
@@ -132,10 +132,10 @@ fun main(args: Array<String>) {
         ok("xpub for a hardened account is refused", e.message == "xpub: FORMAT")
     }
     try {
-        s.xpub(purpose = 44)
-        ok("xpub for BIP44 is refused", false)
+        s.xpub(purpose = 45)
+        ok("xpub for purpose 45 is refused", false)
     } catch (e: SignerException) {
-        ok("xpub for BIP44 is refused", e.message!!.contains("FORMAT"))
+        ok("xpub for purpose 45 is refused", e.message!!.contains("FORMAT"))
     }
 
     // --- which of our addresses an address is, against BIP84's and BIP86's vectors. A count of 20,
@@ -147,10 +147,10 @@ fun main(args: Array<String>) {
           AddressPath(0, 1))
     check("not ours", find("bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"), null)
     try {
-        find("1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2")
-        ok("findAddress refuses base58", false)
+        find("mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV")
+        ok("findAddress refuses a testnet P2PKH", false)
     } catch (e: SignerException) {
-        ok("findAddress refuses base58", e.message == "findAddress: FORMAT")
+        ok("findAddress refuses a testnet P2PKH", e.message == "findAddress: FORMAT")
     }
 
     // --- BIP137: the signature Core's signmessagewithprivkey gives, with the P2WPKH header (check-core-diff)
@@ -185,7 +185,7 @@ fun main(args: Array<String>) {
         s.setPlan(ByteArray(100))
         ok("a plan of the wrong size is refused", false)
     } catch (e: IllegalArgumentException) {
-        ok("a plan of the wrong size is refused", e.message!!.contains("8536 bytes"))
+        ok("a plan of the wrong size is refused", e.message!!.contains("13368 bytes"))
     }
 
     // --- prevtxs that overflow the module's buffer are refused before they are written
@@ -204,7 +204,7 @@ fun main(args: Array<String>) {
 
     // --- an oversized mnemonic is rejected before anything is written
     try {
-        s.seedFromMnemonic(CharArray(1100) { 'x' })
+        s.seedFromMnemonic(CharArray(3100) { 'x' })
         ok("an oversized mnemonic is refused", false)
     } catch (e: IllegalArgumentException) {
         ok("an oversized mnemonic is refused", e.message!!.contains("does not fit"))
@@ -322,7 +322,7 @@ fun main(args: Array<String>) {
             }
         }
         try {
-            q.seedFromSeedQR(ByteArray(800), CharArray(300) { 'x' })
+            q.seedFromSeedQR(ByteArray(2800), CharArray(300) { 'x' })
             ok("an oversized SeedQR is refused", false)
         } catch (e: IllegalArgumentException) {
             ok("an oversized SeedQR is refused", e.message!!.contains("does not fit"))

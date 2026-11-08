@@ -43,7 +43,7 @@ way it is not for `parser.wasm`.
 ```
 signer_init(flags)
 signer_seed_from_mnemonic(...)   or   signer_seed_from_seedqr(...)   or   signer_seed_from_electrum(...)   or   signer_load_seed()
-signer_plan()        <- write the 8536-byte plan_t here
+signer_plan()        <- write the 13368-byte plan_t here
 signer_set_prevtx(i, off, len)   for each input, after writing into signer_prevtx()
 signer_review()      -> re-derives keys, decides what is ours, computes the fee
 signer_display()     -> the strings and amounts to show
@@ -64,7 +64,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 |---|---|
 | `signer_input() -> ptr` | the mnemonic or a SeedQR payload followed by the passphrase, a 64-byte seed, entropy or dice rolls for a new mnemonic, an address to find, a message to sign, or a multisig setup |
 | `signer_input_cap() -> u32` | how many bytes that is (1024); check before writing |
-| `signer_plan() -> ptr` | the `plan_t`, 8536 bytes, copied verbatim from `parser_plan()` |
+| `signer_plan() -> ptr` | the `plan_t`, 13368 bytes, copied verbatim from `parser_plan()` |
 | `signer_prevtx() -> ptr` | the `non_witness_utxo` bytes, laid out however you like within 32768 |
 | `signer_review_output() -> ptr` | `core_review_t`, 64 bytes |
 | `signer_display_output() -> ptr` | `core_display_t`, 2968 bytes |
@@ -77,9 +77,9 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_address_output() -> ptr` | the address `signer_address` made, NUL-terminated, at most 75 |
 | `signer_mnemonic_output() -> ptr` | a new mnemonic, NUL-terminated, at most 256. Secret: clear it once read |
 | `signer_seedqr_output() -> ptr` | a SeedQR made from a mnemonic, at most 96 bytes. Secret: clear it once read |
-| `signer_message_output() -> ptr` | `core_message_t`, 1101 bytes: what to show before signing a message |
+| `signer_message_output() -> ptr` | `core_message_t`, 2125 bytes: what to show before signing a message |
 | `signer_message_sig() -> ptr` | the BIP137 signature, 65 bytes |
-| `signer_multisig_output() -> ptr` | `core_multisig_t`, 1136 bytes: what to show before trusting a multisig |
+| `signer_multisig_output() -> ptr` | `core_multisig_t`, 2452 bytes: what to show before trusting a multisig |
 | `signer_cbor_output() -> ptr` | a crypto-account or crypto-output, CBOR, at most 1024 bytes |
 | `signer_words_output() -> ptr` | word indices from the word entry calls, little-endian uint16, at most 2048. The final words follow from the words typed before them: clear it once read |
 | `signer_wordlist() -> ptr` | the English BIP39 wordlist the module checks against, 2048 x 8 bytes in index order, each word NUL-padded. Read-only: hosts show the words of the indices above from it |
@@ -106,10 +106,11 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_display()` | 0 on success |
 | `signer_facts()` | 0 on success, `NO_SEED` without a seed |
 | `signer_sign()` | the number of signatures, or the negated error |
-| `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 512 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 49 or 84; see below |
+| `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 1024 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 44, 49 or 84; see below |
 | `signer_message_sign()` | 0 on success, `NOT_REVIEWED` unless it is the message and key the last review showed |
-| `signer_xpub(purpose, account)` | 0 on success. m/purpose'/coin'/account' with `purpose` 49 (`sh(wpkh())`), 84 (`wpkh()`) or 86 (`tr()`), or m/48'/coin'/account'/2' with `purpose` 48 (the key expression for `wsh(sortedmulti())`), and `account` below 2^31, otherwise `FORMAT`, with the xpub and descriptor buffers emptied |
-| `signer_address(purpose, account, chain, index)` | 0 on success. The address at m/purpose'/coin'/account'/chain/index, `purpose` 49, 84 or 86, `chain` 0 (receive) or 1 (change), `index` below the 100000 the review would call ours, otherwise `FORMAT`, with the buffer emptied. For listing addresses; `signer_find_address` goes the other way |
+| `signer_xpub(purpose, account)` | 0 on success. m/purpose'/coin'/account' with `purpose` 44 (`pkh()`), 49 (`sh(wpkh())`), 84 (`wpkh()`) or 86 (`tr()`), or m/48'/coin'/account'/2' with `purpose` 48 (the key expression for `wsh(sortedmulti())`), and `account` below 2^31, otherwise `FORMAT`, with the xpub and descriptor buffers emptied |
+| `signer_path_xpub(depth)` | 0 on success. The xpub (tpub on testnet) at the path in the input buffer, `depth` (1 to 8) little-endian uint32s with 2^31 added for a hardened step, into the xpub buffer; `FORMAT` for another depth or an Electrum seed, the buffer emptied |
+| `signer_address(purpose, account, chain, index)` | 0 on success. The address at m/purpose'/coin'/account'/chain/index, `purpose` 44, 49, 84 or 86, `chain` 0 (receive) or 1 (change), `index` below the 100000 the review would call ours, otherwise `FORMAT`, with the buffer emptied. For listing addresses; `signer_find_address` goes the other way |
 | `signer_find_address(len, account, count)` | where the address in `signer_input()` is on m/purpose'/coin'/account', receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there. See below |
 | `signer_fingerprint()` | the master fingerprint, or 0 when no seed is loaded |
 | `signer_multisig_load(len)` | 0 on success. Registers the multisig in the input buffer; see below |
@@ -117,7 +118,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_multisig_load_cbor(len)` | 0 on success. Registers a BCR-2020-010 `crypto-output` CBOR payload from the input buffer; see below |
 | `signer_multisig_unload()` | nothing. Forgets the registered multisig |
 | `signer_multisig_address(chain, index)` | 0 on success. The registered multisig's address at `chain` 0 (receive) or 1 (change) and `index` below 100000, into `signer_address_output()`; `WALLET` without one, `FORMAT` out of range |
-| `signer_multisig_find_address(len, count)` | where the P2WSH address in `signer_input()` is in the registered multisig, receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there, `WALLET` without one |
+| `signer_multisig_find_address(len, count)` | where the P2WSH (or, for `sh(wsh())`, P2SH) address in `signer_input()` is in the registered multisig, receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there, `WALLET` without one |
 | `signer_account_cbor(account)` | the length of a crypto-account in `signer_cbor_output()`, or the negated error |
 | `signer_multisig_cbor()` | the length of the registered multisig's crypto-output, or `-WALLET` when there is none |
 | `signer_unload()` | nothing. Zeroes the key, the plan, the signatures and the display |
@@ -141,7 +142,8 @@ then a byte per input and per output, 16 each, zero past the plan's counts or fo
 ## Finding our addresses
 
 `signer_find_address` answers "is this address mine?" before someone sends to it. The purpose follows
-from the address: `3`/`2` (base58 P2SH) is BIP49, `bc1q`/`tb1q` is BIP84, `bc1p`/`tb1p` is BIP86.
+from the address: `1` or `m`/`n` (base58 P2PKH) is BIP44, `3`/`2` (base58 P2SH) is BIP49, `bc1q`/`tb1q` is BIP84,
+`bc1p`/`tb1p` is BIP86.
 Anything else, or an address for the other network, is `FORMAT`. A bech32 address may be all upper
 case, since that is what a QR's alphanumeric mode carries, but not mixed, and may hold only `0-9a-zA-Z`;
 a base58 one is compared as it is, since its case is part of it. `count` is 1 to 100,000.
@@ -154,13 +156,17 @@ interpreter, on an M-series Mac. Chicory and WasmKit are slower still, so their 
 
 ## Registering a multisig
 
-Without a registered wallet, a P2WSH input is signed when its witness script is a multisig of at most six
+Without a registered wallet, a P2WSH input is signed when its witness script is a multisig of at most 15
 keys that hashes to its script and holds our key, and P2WSH change is shown as an external output: the signer
 cannot tell the cosigners' keys from anyone else's. `signer_multisig_load` gives it those keys. It takes a
-`signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` or `wsh(multi(k,...))` descriptor of up to six keys
-(with `/<0;1>/*`, `/**` or `/0/*` after each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
+`signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` or `wsh(multi(k,...))` descriptor of up to 15 keys, or
+either nested as `sh(wsh(...))` (P2SH-P2WSH, BIP48's script type 1)
+(with `/<0;1>/*`, `/**` or `/0/*` after each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the
+Coldcard setup file (`Format: P2WSH`, or `P2SH-P2WSH` and `P2WSH-P2SH` for the nested one).
 `signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shapes
-(`sortedmulti` 407 or `multi` 406).
+(`sortedmulti` 407 or `multi` 406, in `wsh` 401 and that perhaps in `sh` 400).
+A P2SH input is P2SH-P2WSH when the PSBT gives it a witness script and a redeem script of `0020` and its hash: it
+is signed as a P2WSH one is, once the P2SH hash is checked against that witness script.
 `signer_multisig_load` also takes `wsh(or_d(X,and_v(v:Y,older(n))))` and the same with `after(n)`: X is
 `pk(KEY)` or `multi(m,KEY,...)` of two or three keys, Y the same or `pkh(KEY)`. That is Liana's
 `or_d(pk(PRIMARY),and_v(v:pkh(RECOVERY),...))`, Nunchuk's templates and Keeper's Emergency Key. `n` runs from 1 to
@@ -179,20 +185,20 @@ its origin, chain code and all. Our fingerprint on another key is what the wrong
 is not the wallet's first receive address is `WALLET` too.
 
 What `signer_multisig_output()` holds is for a person to compare with the coordinator before relying on it,
-the receive address above all. From then on a P2WSH input with our key is signed only when its witness script
-is the wallet's at that path (`WALLET` otherwise), and a P2WSH output at our key's path is change or ours once
-the wallet's keys there hash to it and one of its inputs is being signed. Loading another seed unloads the wallet.
+the receive address above all. From then on a P2WSH or P2SH-P2WSH input with our key is signed only when its witness
+script is the wallet's at that path and nested as the wallet is (`WALLET` otherwise), and an output at our key's path
+is change or ours once the wallet's keys there make its script and one of its inputs is being signed. Loading another seed unloads the wallet.
 
 `signer_multisig_cbor()` and `signer_account_cbor()` describe public keys as BCR-2020-010 and -015 do, for
-`parser_ur_encode_cbor()`: the wallet as `wsh(sortedmulti())` or `wsh(multi())`, and the account's `sh(wpkh())`, `wpkh()`, `tr()`
+`parser_ur_encode_cbor()`: the wallet as `wsh(sortedmulti())` or `wsh(multi())`, in `sh()` when it was registered so, and the account's `sh(wpkh())`, `wpkh()`, `tr()`
 and BIP48 key as `wsh(cosigner())`, each key a crypto-hdkey with its origin and parent fingerprint. An `or_d`
 wallet has no crypto-output tag, so `signer_multisig_cbor()` returns `-FORMAT` for it.
 
 ## Signing a message
 
 `signer_message_review` and `signer_message_sign` make a
-[BIP137](https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki) signature: the header (35-38
-for P2SH-P2WPKH, 39-42 for P2WPKH), then r and s; most wallets take it in base64. As with a
+[BIP137](https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki) signature: the header (31-34
+for P2PKH, 35-38 for P2SH-P2WPKH, 39-42 for P2WPKH), then r and s; most wallets take it in base64. As with a
 transaction, one review permits one signature, and the module signs only the message and key it
 hashed at review time, so a message or key swapped in afterwards is refused. Like the plan's, that hash
 is in memory the host can write: it binds review to signing, it does not defend against the host. A
@@ -214,8 +220,8 @@ be the bytes Core gives for the same key. P2TR has no BIP137 form; BIP322 is not
 | 3 | `NOT_OURS` | an input claims our fingerprint, but its key does not produce its script |
 | 4 | `NOTHING_TO_SIGN` | no input in the plan is ours |
 | 5 | `SIGHASH` | a sighash type this signer does not allow |
-| 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most six keys |
-| 7 | `PREVTX_MISSING` | two or more inputs including SegWit v0, and no previous transaction, without `signer_init`'s bit 2 |
+| 6 | `SCRIPT` | an input to be signed is not P2PKH, P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH or P2SH-P2WSH with a multisig of at most 15 keys |
+| 7 | `PREVTX_MISSING` | a P2PKH input to sign and any input without its previous transaction, whatever `signer_init`'s bit 2 says; or two or more inputs including SegWit v0 without one, and without bit 2 |
 | 8 | `PREVTX_MISMATCH` | the previous transaction disagrees with the claimed amount, txid or vout |
 | 9 | `FEE` | the fee does not add up, or overflows |
 | 10 | `NOT_REVIEWED` | the plan is not the one review passed, or the approval was already used |
@@ -274,29 +280,29 @@ PSBT chose, which is why it is safe to put in front of a person.
 Hand these to `parser_sigs()` and call `parser_finalize()`; `parser.wasm` inserts them into the
 original PSBT and leaves every other byte alone.
 
-### `core_message_t` (1101 bytes)
+### `core_message_t` (2125 bytes)
 
 | offset | size | field |
 |---:|---:|---|
 | 0 | 75 | `address`, of the key that will sign, NUL-terminated |
 | 75 | 1 | `text_kind`: 0 the message itself, 1 its hex |
-| 76 | 1025 | `text`, NUL-terminated |
+| 76 | 2049 | `text`, NUL-terminated |
 
-### `core_multisig_t` (1136 bytes)
+### `core_multisig_t` (2452 bytes)
 
 | offset | size | field |
 |---:|---:|---|
 | 0 | 1 | `threshold`, for `or_d` the primary path's |
 | 1 | 1 | `n`, how many keys |
 | 2 | 1 | `ours`, which of them; for `or_d` the primary path's keys come first |
-| 3 | 1 | `kind`: 0 `sortedmulti`, 8 `multi`, or 1 `or_d` with 2 set for a single recovery key's `v:pk` and 4 for `after()` |
-| 4 | 6 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
-| 28 | 75 | `receive`, the first receive address, NUL-terminated |
-| 103 | 1024 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
-| 1127 | 1 | `primary`: for `or_d`, how many of the keys are the primary path's |
-| 1128 | 1 | `threshold2`: for `or_d`, the recovery path's threshold |
-| 1129 | 1 | `ours2`: for `or_d`, our key on the recovery path when `ours` is on the primary too, else 0xff |
-| 1132 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery keys can spend |
+| 3 | 1 | `kind`: 0 `sortedmulti`, 8 `multi`, or 1 `or_d` with 2 set for a single recovery key's `v:pk` and 4 for `after()`; 16 set for `sh(wsh())` |
+| 4 | 15 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
+| 64 | 75 | `receive`, the first receive address, NUL-terminated |
+| 139 | 2304 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
+| 2443 | 1 | `primary`: for `or_d`, how many of the keys are the primary path's |
+| 2444 | 1 | `threshold2`: for `or_d`, the recovery path's threshold |
+| 2445 | 1 | `ours2`: for `or_d`, our key on the recovery path when `ours` is on the primary too, else 0xff |
+| 2448 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery keys can spend |
 
 ## Signatures are deterministic
 
@@ -328,9 +334,7 @@ is still deterministic.
 
 ## What this module does not do
 
-P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most six keys
-(BIP48), `SIGHASH_ALL` and Taproot's `SIGHASH_DEFAULT`. P2WSH change is shown as change only for a registered multisig
-wallet; without one it is shown as an external output and counted in `spend`. No taproot multisig, no script trees,
-no legacy P2PKH
-signing. The full list is in
+P2PKH (BIP44), P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH or P2SH-P2WSH multisig of at
+most 15 keys (BIP48), `SIGHASH_ALL` and Taproot's `SIGHASH_DEFAULT`. P2WSH change is shown as change only for a registered multisig
+wallet; without one it is shown as an external output and counted in `spend`. No taproot multisig, no script trees. The full list is in
 bitwasm-signer-pico's `docs/limitations.md`.
