@@ -31,22 +31,22 @@ jobs:
       - name: The pinned toolchain, so this is the build a release reproduces
         run: |
           V=34.0
-          curl -sL -o /tmp/sdk.tar.gz \
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/sdk.tar.gz \
             https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-$V-x86_64-linux.tar.gz
           echo "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4  /tmp/sdk.tar.gz" | sha256sum -c -
           tar xzf /tmp/sdk.tar.gz -C /tmp
-          curl -sL -o /tmp/binaryen.tar.gz \
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/binaryen.tar.gz \
             https://github.com/WebAssembly/binaryen/releases/download/version_132/binaryen-version_132-x86_64-linux.tar.gz
           echo "195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572  /tmp/binaryen.tar.gz" | sha256sum -c -
           tar xzf /tmp/binaryen.tar.gz -C /tmp
           W=1.261.0
-          curl -sL -o /tmp/wt.tar.gz \
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/wt.tar.gz \
             https://github.com/bytecodealliance/wasm-tools/releases/download/v$W/wasm-tools-$W-x86_64-linux.tar.gz
           echo "ad62b2176037e93e1348cb65d6212d128ca9f097b63d155569f25215818ff7b1  /tmp/wt.tar.gz" | sha256sum -c -
           tar xzf /tmp/wt.tar.gz -C /tmp
           sudo install /tmp/wasm-tools-$W-x86_64-linux/wasm-tools /usr/local/bin/
           K=2.4.20
-          curl -sL -o /tmp/kc.zip \
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/kc.zip \
             https://github.com/JetBrains/kotlin/releases/download/v$K/kotlin-compiler-$K.zip
           echo "59e9ca74c7904ef2c122b12114937673ccce68de820a663f0ed66ccf8799e0b7  /tmp/kc.zip" | sha256sum -c -
           unzip -q /tmp/kc.zip -d /tmp
@@ -130,7 +130,7 @@ jobs:
       - name: Bitcoin Core (pinned by version and by hash)
         run: |
           V=28.1
-          curl -sL -o /tmp/btc.tar.gz \
+          curl -fsSL --retry 5 --retry-all-errors -o /tmp/btc.tar.gz \
             https://bitcoincore.org/bin/bitcoin-core-$V/bitcoin-$V-x86_64-linux-gnu.tar.gz
           echo "07f77afd326639145b9ba9562912b2ad2ccec47b8a305bd075b4f4cb127b7ed7  /tmp/btc.tar.gz" \
             | sha256sum -c -
