@@ -77,7 +77,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_address_output() -> ptr` | the address `signer_address` made, NUL-terminated, at most 75 |
 | `signer_mnemonic_output() -> ptr` | a new mnemonic, NUL-terminated, at most 256. Secret: clear it once read |
 | `signer_seedqr_output() -> ptr` | a SeedQR made from a mnemonic, at most 96 bytes. Secret: clear it once read |
-| `signer_message_output() -> ptr` | `core_message_t`, 1101 bytes: what to show before signing a message |
+| `signer_message_output() -> ptr` | `core_message_t`, 2125 bytes: what to show before signing a message |
 | `signer_message_sig() -> ptr` | the BIP137 signature, 65 bytes |
 | `signer_multisig_output() -> ptr` | `core_multisig_t`, 1136 bytes: what to show before trusting a multisig |
 | `signer_cbor_output() -> ptr` | a crypto-account or crypto-output, CBOR, at most 1024 bytes |
@@ -106,9 +106,10 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_display()` | 0 on success |
 | `signer_facts()` | 0 on success, `NO_SEED` without a seed |
 | `signer_sign()` | the number of signatures, or the negated error |
-| `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 512 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 49 or 84; see below |
+| `signer_message_review(len, purpose, account, chain, index)` | 0 on success. The message in the input buffer (at most 1024 bytes) and the key at m/purpose'/coin'/account'/chain/index, `purpose` 49 or 84; see below |
 | `signer_message_sign()` | 0 on success, `NOT_REVIEWED` unless it is the message and key the last review showed |
 | `signer_xpub(purpose, account)` | 0 on success. m/purpose'/coin'/account' with `purpose` 49 (`sh(wpkh())`), 84 (`wpkh()`) or 86 (`tr()`), or m/48'/coin'/account'/2' with `purpose` 48 (the key expression for `wsh(sortedmulti())`), and `account` below 2^31, otherwise `FORMAT`, with the xpub and descriptor buffers emptied |
+| `signer_path_xpub(depth)` | 0 on success. The xpub (tpub on testnet) at the path in the input buffer, `depth` (1 to 8) little-endian uint32s with 2^31 added for a hardened step, into the xpub buffer; `FORMAT` for another depth or an Electrum seed, the buffer emptied |
 | `signer_address(purpose, account, chain, index)` | 0 on success. The address at m/purpose'/coin'/account'/chain/index, `purpose` 49, 84 or 86, `chain` 0 (receive) or 1 (change), `index` below the 100000 the review would call ours, otherwise `FORMAT`, with the buffer emptied. For listing addresses; `signer_find_address` goes the other way |
 | `signer_find_address(len, account, count)` | where the address in `signer_input()` is on m/purpose'/coin'/account', receive then change, indices 0 to `count`-1: `chain << 20 \| index`, or the negated error; `NOT_FOUND` when it is not there. See below |
 | `signer_fingerprint()` | the master fingerprint, or 0 when no seed is loaded |
@@ -274,13 +275,13 @@ PSBT chose, which is why it is safe to put in front of a person.
 Hand these to `parser_sigs()` and call `parser_finalize()`; `parser.wasm` inserts them into the
 original PSBT and leaves every other byte alone.
 
-### `core_message_t` (1101 bytes)
+### `core_message_t` (2125 bytes)
 
 | offset | size | field |
 |---:|---:|---|
 | 0 | 75 | `address`, of the key that will sign, NUL-terminated |
 | 75 | 1 | `text_kind`: 0 the message itself, 1 its hex |
-| 76 | 1025 | `text`, NUL-terminated |
+| 76 | 2049 | `text`, NUL-terminated |
 
 ### `core_multisig_t` (1136 bytes)
 

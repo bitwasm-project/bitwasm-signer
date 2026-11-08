@@ -73,6 +73,7 @@ chain, index = S.find_address("bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4a
 print(f"found {chain} {index}")
 print(f"address {S.address(purpose=49, account=2, chain=1, index=7)}")
 print(f"desc {S.xpub(purpose=86, account=1)['descriptor']}")
+print(f"path xpub {S.path_xpub([48 + 2**31, 1 + 2**31, 2**31, 2 + 2**31, 7])}")
 print(f"dice {S.mnemonic_from_dice(bytearray(b'3' * 99)).decode()}")
 print(f"seedqr {S.seedqr_from_mnemonic(bytearray(MNEMONIC.encode())).decode()}")
 print(f"bip85 {S.bip85_mnemonic(words=24, index=3).decode()}")

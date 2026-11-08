@@ -122,6 +122,13 @@ const tr = S.xpub({ purpose: 86 });
 check("BIP86's account 0", tr.xpub,
       "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ");
 check("the tr() descriptor", tr.descriptor, `tr([73c5da0a/86h/0h/0h]${tr.xpub}/<0;1>/*)`);
+check("pathXpub() of m/84'/0'/0' is the account's", S.pathXpub([84 + 2 ** 31, 2 ** 31, 2 ** 31]), x.xpub);
+try {
+  S.pathXpub(new Array(9).fill(0));
+  ok("pathXpub() refuses nine steps", false);
+} catch (e) {
+  ok("pathXpub() refuses nine steps", e instanceof RangeError);
+}
 {
   const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
   const big = (b) => BigInt("0x" + Buffer.from(b).toString("hex"));

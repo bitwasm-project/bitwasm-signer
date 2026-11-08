@@ -269,6 +269,24 @@ static void test_review_and_sign(void) {
     set_key(&p.outputs[1].key, 84 | H, H, 1 | H, 1, 0);
     CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_EXTERNAL, "other account change is external");
 
+    /* testnet's coin type on mainnet: change all the same when the signed input is on that very account */
+    {
+        static const uint8_t in_spk[22] = {0x00, 0x14, 0xd0, 0xc4, 0xa3, 0xef, 0x09, 0xe9, 0x97, 0xb6, 0xe9,
+                                           0x9e, 0x39, 0x7e, 0x51, 0x8f, 0xe3, 0xe4, 0x1a, 0x11, 0x8c, 0xa1},
+                             change_spk[22] = {0x00, 0x14, 0x2f, 0x34, 0xaa, 0x1c, 0xf0, 0x0a, 0x53, 0xb0, 0x55,
+                                               0xa2, 0x91, 0xa0, 0x3a, 0x7d, 0x45, 0xf0, 0xa6, 0x98, 0x8b, 0x52};
+        base_plan(&p);
+        set_spk(&p.inputs[0].spk, in_spk, 22);
+        set_key(&p.inputs[0].key, 84 | H, 1 | H, H, 0, 0);
+        set_spk(&p.outputs[1].spk, change_spk, 22);
+        set_key(&p.outputs[1].key, 84 | H, 1 | H, H, 1, 0);
+        CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_CHANGE, "coin type 1 change on mainnet");
+        set_key(&p.inputs[0].key, 84 | H, H, H, 0, 0);
+        set_spk(&p.inputs[0].spk, TV_SPK_P2WPKH_0_0, 22);
+        CHECK(core_review(&p, NULL, &r) == CORE_OK && r.owner[1] == CORE_OUT_EXTERNAL,
+              "but not when the input is on coin type 0");
+    }
+
     /* claims our fingerprint, but the key does not produce the script */
     base_plan(&p);
     set_spk(&p.inputs[0].spk, TV_SPK_P2WPKH_0_1, 22);
