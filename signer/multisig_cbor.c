@@ -223,13 +223,17 @@ int ms_cbor_descriptor(const uint8_t *cbor, size_t len, int testnet, char out[MS
     ms_wallet_t wallet = {0};
     uint64_t n, field, v, key_count = 0;
     uint32_t seen = 0;
+    size_t at;
     int have_threshold = 0, have_keys = 0;
     unsigned int major;
 
-    /* 407 sortedmulti, 406 multi, in 401 wsh and that perhaps in 400 sh */
-    wallet.sh = (uint8_t)tag(&r, 400);
-    if (!wallet.sh) r.i = 0;
-    if (!tag(&r, 401) || !head(&r, &major, &v) || major != 6 || (v != 406 && v != 407) || !map_start(&r, &n)) return 0;
+    /* 407 sortedmulti, 406 multi, in 401 wsh, in 400 sh, or in 401 in 400 */
+    wallet.sh = tag(&r, 400) ? MS_SH : MS_WSH;
+    at = r.i = wallet.sh ? r.i : 0;
+    if (tag(&r, 401)) wallet.sh = wallet.sh ? MS_SH_WSH : MS_WSH;
+    else if (wallet.sh) r.i = at;
+    else return 0;
+    if (!head(&r, &major, &v) || major != 6 || (v != 406 && v != 407) || !map_start(&r, &n)) return 0;
     wallet.kind = v == 406 ? MS_MULTI : MS_SORTEDMULTI;
     for (uint64_t i = 0; i < n; i++) {
         if (!map_key(&r, &field, &seen)) return 0;

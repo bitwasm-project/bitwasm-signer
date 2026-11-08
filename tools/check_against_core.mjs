@@ -53,6 +53,12 @@ const NESTED = {
   cosigners: ["[3f635a63/48h/0h/0h/1h]tpubDFfBj3CGmAdW3kvTz4Q3DsgBhtuH6LJHkHcxXcqYwYuGGtbQeFkhxfVcWdY2mb5ZGG1kdGtGgKunBRRRqtbidwDYYpbcGUGqGVadaFjZQyE",
               "[b8688df1/48h/0h/0h/1h]tpubDFnc6MoxQh6UxWdbz1NmbDACTCt8nE5f9DyCfGdnMuYXAKqoT3sVMF7LRni7mcYzWZyT3xSqzmXikVgXiq9NwizCJBPpFQEpwk4P4iCrULb"],
 };
+// BIP45 P2SH 2-of-3 at m/45', the multisig its redeem script, of the same three seeds
+const LEGACY = {
+  tprv: "tprv8cRSopCFPLkE6x9yQGkSj1THxMUA4crFYNj7X87BGgrRnpGULNUcSam6hjnytG5eKHFJf3npSyPotsGp1XCC9m9H6GuEKoCwAQsxRAL9A43",
+  cosigners: ["[3f635a63/45h]tpubD8j9goBmftKW4NdfULquKcE5qFYWoSQ4uHGxsNwGvPsNfGVhJHb3ZV648tA1WnGPMwR8Vo6zTmVw1XAWut6wufbgrtCKDV9KzMuiwSrMwPk",
+              "[b8688df1/45h]tpubD9ck34tZ5STXfaEq1UFKGdK3pYXwgjcxuTLWMikFvgk2TzsKzjvKbG1GickiooWcsy8tgvNxgXmUG1R4jToji3ae8k5CDwUcskTenSNN3vr"],
+};
 const FINGERPRINT = "73c5da0a";
 const MNEMONIC = "abandon ".repeat(11) + "about";
 const WALLET = "diff";
@@ -114,6 +120,11 @@ for (const [chain, internal] of [[0, false], [1, true]]) {
 for (const chain of [0, 1]) {
   const keys = [`[${FINGERPRINT}/48h/0h/0h/1h]${NESTED.tprv}`, ...NESTED.cosigners].map((k) => `${k}/${chain}/*`);
   const desc = `sh(wsh(sortedmulti(2,${keys.join(",")})))`;
+  imports.push({ desc: `${desc}#${JSON.parse(cli("getdescriptorinfo", desc)).checksum}`, timestamp: "now", range: [0, 20] });
+}
+for (const chain of [0, 1]) {
+  const keys = [`[${FINGERPRINT}/45h]${LEGACY.tprv}`, ...LEGACY.cosigners].map((k) => `${k}/${chain}/*`);
+  const desc = `sh(sortedmulti(2,${keys.join(",")}))`;
   imports.push({ desc: `${desc}#${JSON.parse(cli("getdescriptorinfo", desc)).checksum}`, timestamp: "now", range: [0, 20] });
 }
 // The 2-of-7 at account 1: ours beside the three cosigner seeds at accounts 1 and 3, which plan version 4 signs

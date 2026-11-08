@@ -208,7 +208,7 @@ typedef struct {
     uint8_t  n_inputs, n_outputs;
     plan_input_t  inputs[16];
     plan_output_t outputs[16];
-    plan_wscript_t wscripts[16]; /* a P2WSH input's witness script, only for one to be signed */
+    plan_wscript_t wscripts[16]; /* a P2WSH input's witness script, or a P2SH multisig's redeem script, only for one to be signed */
 } plan_t;                                                                  /* 13368 */
 ```
 
@@ -355,7 +355,7 @@ make fuzz-ur
 
 Two harnesses cover everything an attacker controls: `tests/fuzz_psbt.c` feeds arbitrary bytes to
 `parser_parse` and then checks the invariants a host relies on (magic, version, counts, script
-lengths, derivation depth, that a witness script is only ever filled for a P2WSH input to be signed, and
+lengths, derivation depth, that a witness script is only ever filled for a P2WSH or P2SH input to be signed, and
 that `parser_prevtx_off/len` stay inside the input buffer), and
 `tests/fuzz_ur.c` feeds arbitrary UR parts, one per line, the way an animated QR arrives.
 

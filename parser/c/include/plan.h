@@ -57,7 +57,8 @@ typedef struct {
     uint8_t n_inputs, n_outputs;
     plan_input_t inputs[PLAN_MAX_INPUTS];
     plan_output_t outputs[PLAN_MAX_OUTPUTS];
-    plan_wscript_t wscripts[PLAN_MAX_INPUTS]; /* a P2WSH input's witness script, only for one to be signed */
+    plan_wscript_t wscripts[PLAN_MAX_INPUTS]; /* a P2WSH input's witness script, or a P2SH multisig's redeem script,
+                                                 only for one to be signed */
 } plan_t;
 
 /* A signature made by the signer. The host writes it to parser.wasm's signature buffer and parser.wasm inserts it */

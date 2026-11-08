@@ -249,12 +249,12 @@ for (const [what, opts] of [["purpose 45", { purpose: 45 }], ["a hardened accoun
     const sv = P2.sign();
     ok(`${name}: ECDSA with a compressed key for each`, sv.every((s) => s.sig[0] === 0x30 && (s.pubkey[0] === 2 || s.pubkey[0] === 3)));
   }
-  // a P2SH multisig we cosign is left alone, not a reason to refuse the input of ours beside it
+  // a P2SH multisig whose redeem script holds our key is signed beside our P2WPKH input, as a legacy input is
   {
-    const m = planFor(`${root}parser/build/vectors/own_with_p2sh_multisig_input.psbt`, parseInt("73c5da0a", 16));
+    const m = planFor(`${root}parser/build/vectors/own_mixed_p2sh_2of3_nwu.psbt`, parseInt("73c5da0a", 16));
     const rm = P2.setPlan(m.plan).setPrevTxs(m.prevTxs).review();
-    ok("beside a P2SH multisig we cosign, our P2WPKH input alone is signed", rm.nSign === 1 && rm.willSign[0] && !rm.willSign[1]);
-    check("and signed", P2.sign().length, 1);
+    ok("beside our P2WPKH input, a P2SH 2-of-3 of ours is signed too", rm.nSign === 2 && rm.willSign[0] && rm.willSign[1]);
+    check("and signed", P2.sign().length, 2);
   }
   // a P2SH that is not P2SH(P2WPKH(our key)), whatever the PSBT says, is refused
   const v = planFor(`${root}parser/build/vectors/own_p2sh_p2wpkh_1in.psbt`, parseInt("73c5da0a", 16));

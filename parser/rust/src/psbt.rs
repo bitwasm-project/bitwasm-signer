@@ -291,6 +291,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
     let mut wu: Option<&[u8]> = None;
     let mut nwu: Option<&[u8]> = None;
     let mut ws: Option<&[u8]> = None;
+    let mut rs: Option<&[u8]> = None;
     let mut bip32 = Cand::NONE;
     let mut tap = Cand::NONE;
     let mut finalized = false;
@@ -335,6 +336,8 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
                 wsh_redeem |= e.key[0] == 0x04 && e.val.len() == 34 && e.val[0] == 0 && e.val[1] == 32;
                 if e.key[0] == 0x05 {
                     ws = Some(e.val);
+                } else {
+                    rs = Some(e.val);
                 }
             }
             0x06 => {
@@ -486,7 +489,12 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
     // or a P2TR key-path spend with no script tree and no signature yet, is one this signer will sign
     let mut is_tap = false;
     // P2WSH, or P2SH-P2WSH: the signer checks the P2SH hash against the witness script
-    let wsh = in_.spk.is_p2wsh() || (in_.spk.len == 23 && in_.spk.is_wpkh() && wsh_redeem);
+    let mut wsh = in_.spk.is_p2wsh() || (in_.spk.len == 23 && in_.spk.is_wpkh() && wsh_redeem);
+    // Or a P2SH whose redeem script is the multisig itself, passed on in the witness script's place
+    if !wsh && in_.spk.len == 23 && in_.spk.is_wpkh() && rs.is_some() && !wpkh_redeem {
+        ws = rs;
+        wsh = true;
+    }
     let chosen = if in_.spk.is_wpkh() && (in_.spk.len == 22 || wpkh_redeem) && bip32.found && !signed_by_cand {
         in_.sighash_type = if sighash == 0xffff_ffff { 0x01 } else { sighash as u8 };
         Some(bip32)

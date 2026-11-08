@@ -140,22 +140,23 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
  * refused for an Electrum seed. CORE_OK, or _FORMAT / _NO_SEED */
 int core_path_xpub(const uint32_t *path, unsigned int depth, char out[CORE_XPUB_MAX]);
 
-/* Registers a P2WSH sortedmulti or multi wallet of at most 15 keys from a descriptor, a BSMS 1.0 record or a Coldcard
- * setup file, or wsh(or_d(X,and_v(v:Y,older(n)))) from its descriptor: X pk() or multi() of up to three keys, Y the
- * same or pkh(), and after(n) as well; the seed may hold a key on each path, one xpub under <0;1> and <2;3> too.
- * From then on its inputs are signed only when their witness script is the wallet's, and its outputs at our
+/* Registers a P2WSH, P2SH-P2WSH or P2SH sortedmulti or multi wallet of at most 15 keys from a descriptor, a BSMS 1.0
+ * record or a Coldcard setup file, or wsh(or_d(X,and_v(v:Y,older(n)))) from its descriptor: X pk() or multi() of up to
+ * three keys, Y the same or pkh(), and after(n) as well; the seed may hold a key on each path, one xpub under <0;1> and
+ * <2;3> too. From then on its inputs are signed only when their witness script is the wallet's, and its outputs at our
  * keys' paths are shown as change. Unloading the seed unloads it too */
 #define CORE_MULTISIG_DESC_MAX 2304
 #define CORE_MULTISIG_MAX_KEYS 15
 /* kind is SORTEDMULTI, MULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock); SH marks
- * sortedmulti or multi nested in P2SH, sh(wsh(...)) */
+ * sortedmulti or multi nested in P2SH, sh(wsh(...)), and P2SH one in P2SH alone, sh(...) */
 enum {
     CORE_WALLET_SORTEDMULTI = 0,
     CORE_WALLET_OR_D = 1,
     CORE_WALLET_OR_D_PK = 2,
     CORE_WALLET_OR_D_AFTER = 4,
     CORE_WALLET_MULTI = 8,
-    CORE_WALLET_SH = 16
+    CORE_WALLET_SH = 16,
+    CORE_WALLET_P2SH = 32
 };
 typedef struct {
     uint8_t threshold, n, ours; /* ours indexes fingerprints[]; for OR_D the primary's threshold, its keys first */

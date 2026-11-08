@@ -133,8 +133,8 @@ static unsigned int side(cur_t *c, int testnet, ms_wallet_t *w, int *pkh) {
     return eat(c, ")") ? m : 0;
 }
 
-/* wsh(sortedmulti(k,KEY,...)), wsh(multi(k,KEY,...)), either in sh(), or wsh(or_d(X,and_v(v:Y,older(n)))) as
- * ms_wallet_t describes it, and if there is one, a checksum that has to hold */
+/* wsh(sortedmulti(k,KEY,...)), wsh(multi(k,KEY,...)), either in sh() or in its place, or
+ * wsh(or_d(X,and_v(v:Y,older(n)))) as ms_wallet_t describes it, and if there is one, a checksum that has to hold */
 static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
     size_t start = c->i;
     uint32_t k;
@@ -151,9 +151,10 @@ static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
         if (!number(c, &k) || !eat(c, "))))") || k < 1) return 0;
         w->threshold = (uint8_t)m, w->threshold2 = (uint8_t)m2, w->lock = k;
     } else {
-        w->sh = (uint8_t)eat(c, "sh(");
-        if (!eat(c, "wsh(sortedmulti(")) {
-            if (!eat(c, "wsh(multi(")) return 0;
+        if (eat(c, "sh(")) w->sh = eat(c, "wsh(") ? MS_SH_WSH : MS_SH;
+        else if (!eat(c, "wsh(")) return 0;
+        if (!eat(c, "sortedmulti(")) {
+            if (!eat(c, "multi(")) return 0;
             w->kind = MS_MULTI;
         }
         if (!number(c, &k)) return 0;
@@ -162,7 +163,7 @@ static int descriptor(cur_t *c, int testnet, ms_wallet_t *w) {
             if (w->n == MS_MAX_KEYS || !key_expr(c, testnet, key) || key->child[0] != 0 || key->child[1] != 1) return 0;
             w->n++;
         }
-        if (!eat(c, "))") || (w->sh && !eat(c, ")")) || k < 1 || k > w->n) return 0;
+        if (!eat(c, "))") || (w->sh == MS_SH_WSH && !eat(c, ")")) || k < 1 || k > w->n) return 0;
         w->threshold = (uint8_t)k;
     }
     if (!eat(c, "#")) return 1;
@@ -209,8 +210,8 @@ static int bsms(cur_t *c, int testnet, ms_wallet_t *w, char address[ADDRESS_MAX]
 }
 
 /* Coldcard's setup file, which Sparrow, BlueWallet and Nunchuk also write: Name, Policy: M of N, Derivation
- * (for the keys after it), Format: P2WSH or P2SH-P2WSH (P2WSH-P2SH too), then FINGERPRINT: xpub lines. # starts a
- * comment */
+ * (for the keys after it), Format: P2WSH, P2SH-P2WSH (P2WSH-P2SH too) or P2SH, then FINGERPRINT: xpub lines. #
+ * starts a comment */
 static int setup_file(cur_t *c, int testnet, ms_wallet_t *w) {
     cur_t l;
     ms_key_t at = {0};
@@ -226,7 +227,9 @@ static int setup_file(cur_t *c, int testnet, ms_wallet_t *w) {
         } else if (label(&l, "format")) {
             const char *f = l.s + l.i;
             const size_t fn = l.n - l.i;
-            w->sh = (uint8_t)(fn == 10 && (!memcmp(f, "P2SH-P2WSH", 10) || !memcmp(f, "P2WSH-P2SH", 10)));
+            w->sh = fn == 10 && (!memcmp(f, "P2SH-P2WSH", 10) || !memcmp(f, "P2WSH-P2SH", 10)) ? MS_SH_WSH
+                    : fn == 4 && !memcmp(f, "P2SH", 4)                                         ? MS_SH
+                                                                                               : MS_WSH;
             if (!w->sh && (fn != 5 || memcmp(f, "P2WSH", 5))) return 0;
             p2wsh = 1;
         } else {
@@ -259,7 +262,7 @@ int ms_parse(const char *s, size_t len, int testnet, ms_wallet_t *w, char addres
     address[0] = 0;
     while (c.n && (s[c.n - 1] == '\n' || s[c.n - 1] == '\r' || s[c.n - 1] == ' ')) c.n--;
     if (c.n >= 8 && !memcmp(s, "BSMS 1.0", 8)) ok = bsms(&c, testnet, w, address);
-    else if ((c.n >= 4 && !memcmp(s, "wsh(", 4)) || (c.n >= 7 && !memcmp(s, "sh(wsh(", 7)))
+    else if ((c.n >= 4 && !memcmp(s, "wsh(", 4)) || (c.n >= 3 && !memcmp(s, "sh(", 3)))
         ok = descriptor(&c, testnet, w) && c.i == c.n;
     else ok = setup_file(&c, testnet, w);
     for (unsigned int i = 0; ok && i < w->n; i++)
@@ -336,8 +339,9 @@ size_t ms_spk(const plan_wscript_t *ws, int sh, uint8_t out[34]) {
     uint8_t h[20];
     out[0] = 0x00, out[1] = 32;
     sha256(ws->bytes, ws->len, out + 2);
-    if (!sh) return 34;
-    hash160(out, 34, h);
+    if (sh == MS_WSH) return 34;
+    if (sh == MS_SH) hash160(ws->bytes, ws->len, h);
+    else hash160(out, 34, h);
     out[0] = 0xa9, out[1] = 20, out[22] = 0x87;
     memcpy(out + 2, h, 20);
     return 23;
@@ -410,11 +414,12 @@ size_t ms_descriptor(const ms_wallet_t *w, int testnet, char out[MS_DESC_MAX]) {
         o = put(out, o, num);
         o = put(out, o, "))))");
     } else {
-        o = put(out, put(out, 0, w->sh ? "sh(" : ""), w->kind == MS_MULTI ? "wsh(multi(" : "wsh(sortedmulti(");
+        const char *pay = w->sh == MS_SH ? "sh(" : w->sh ? "sh(wsh(" : "wsh(";
+        o = put(out, put(out, 0, pay), w->kind == MS_MULTI ? "multi(" : "sortedmulti(");
         decimal(w->threshold, num);
         o = put(out, o, num);
         for (unsigned int i = 0; i < w->n; i++) o = put_key(out, put(out, o, ","), &w->keys[i], testnet);
-        o = put(out, o, w->sh ? ")))" : "))");
+        o = put(out, o, w->sh == MS_SH_WSH ? ")))" : "))");
     }
     if (o + 9 >= MS_DESC_MAX || !desc_checksum(out, o, num)) return 0;
     out[o++] = '#';

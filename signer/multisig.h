@@ -1,9 +1,9 @@
 #ifndef CORE_MULTISIG_H
 #define CORE_MULTISIG_H
 
-/* A P2WSH or P2SH-P2WSH sortedmulti or multi wallet of at most 15 keys, read from a coordinator's descriptor, BSMS
- * record or Coldcard-style setup file, or a primary path with a timelocked recovery path as Liana, Nunchuk and Keeper
- * write them. Only public keys: core.c decides which of them is ours */
+/* A P2WSH, P2SH-P2WSH or P2SH sortedmulti or multi wallet of at most 15 keys, read from a coordinator's descriptor,
+ * BSMS record or Coldcard-style setup file, or a primary path with a timelocked recovery path as Liana, Nunchuk and
+ * Keeper write them. Only public keys: core.c decides which of them is ours */
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,10 +26,11 @@ typedef struct {
 /* OR_D is wsh(or_d(X,and_v(v:Y,older(lock)))), X keys[0, primary) as pk() or multi(threshold,...), Y the rest as
  * multi(threshold2,...) or one key's v:pkh(), v:pk() with the PK flag; AFTER swaps in after(lock) */
 enum { MS_SORTEDMULTI = 0, MS_OR_D = 1, MS_OR_D_PK = 2, MS_OR_D_AFTER = 4, MS_MULTI = 8 };
+enum { MS_WSH = 0, MS_SH_WSH = 1, MS_SH = 2 }; /* how sortedmulti and multi are paid to */
 
 typedef struct {
     uint8_t kind, threshold, n, primary, threshold2;
-    uint8_t sh;    /* sh(wsh(...)): the witness script nested in P2SH, for sortedmulti and multi */
+    uint8_t sh;    /* MS_*: wsh(), sh(wsh()), or sh() alone, whose redeem script is the multisig */
     uint32_t lock; /* OR_D: the older() or after() value, 1 to 2^31 - 1 */
     ms_key_t keys[MS_MAX_KEYS];
 } ms_wallet_t;
@@ -41,7 +42,7 @@ int ms_cbor_descriptor(const uint8_t *cbor, size_t len, int testnet, char out[MS
 /* The witness script at chain (0 receive, 1 change) and index, keys sorted as sortedmulti() sorts them or in
  * multi()'s order */
 int ms_wscript(const ms_wallet_t *w, uint32_t chain, uint32_t index, plan_wscript_t *out);
-/* The scriptPubKey paying to ws: P2WSH, or with sh P2SH of that P2WSH. Returns its length, 34 or 23 */
+/* The scriptPubKey paying to ws as sh (MS_*) has it: P2WSH, P2SH of that, or P2SH of ws. Returns its length */
 size_t ms_spk(const plan_wscript_t *ws, int sh, uint8_t out[34]);
 /* n as the script pushes it, a minimal script number: OP_1..OP_16, or 1 to 4 bytes. Returns its length */
 size_t ms_scriptnum(uint32_t n, uint8_t out[5]);
