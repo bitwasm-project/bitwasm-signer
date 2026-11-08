@@ -138,13 +138,13 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
  * refused for an Electrum seed. CORE_OK, or _FORMAT / _NO_SEED */
 int core_path_xpub(const uint32_t *path, unsigned int depth, char out[CORE_XPUB_MAX]);
 
-/* Registers a P2WSH sortedmulti or multi wallet of at most six keys from a descriptor, a BSMS 1.0 record or a Coldcard
+/* Registers a P2WSH sortedmulti or multi wallet of at most 15 keys from a descriptor, a BSMS 1.0 record or a Coldcard
  * setup file, or wsh(or_d(X,and_v(v:Y,older(n)))) from its descriptor: X pk() or multi() of up to three keys, Y the
  * same or pkh(), and after(n) as well; the seed may hold a key on each path, one xpub under <0;1> and <2;3> too.
  * From then on its inputs are signed only when their witness script is the wallet's, and its outputs at our
  * keys' paths are shown as change. Unloading the seed unloads it too */
-#define CORE_MULTISIG_DESC_MAX 1024
-#define CORE_MULTISIG_MAX_KEYS 6
+#define CORE_MULTISIG_DESC_MAX 2304
+#define CORE_MULTISIG_MAX_KEYS 15
 /* kind is SORTEDMULTI, MULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock) */
 enum {
     CORE_WALLET_SORTEDMULTI = 0,

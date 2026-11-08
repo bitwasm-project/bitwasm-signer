@@ -203,7 +203,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   check("another account", found("bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", { account: 1, count: 20 }), "null");
   for (const [what, a, err, opts] of [["a testnet address", "tb1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl", SignerError],
                                 ["base58", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", SignerError],
-                                ["an oversized string", "bc1q" + "q".repeat(1100), RangeError],
+                                ["an oversized string", "bc1q" + "q".repeat(3100), RangeError],
                                 ["a NUL inside", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g\0junk", SignerError],
                                 ["a count JavaScript would wrap", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", RangeError, { count: 2 ** 32 + 5 }]]) {
     try {
@@ -267,13 +267,13 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   P2.unload();
 }
 
-// --- BIP48 P2WSH multisig: signed only once the witness script is a multisig of at most six keys, hashes to
+// --- BIP48 P2WSH multisig: signed only once the witness script is a multisig of at most 15 keys, hashes to
 // the input's script and holds our key. Core signs the same PSBTs byte for byte: check-core-diff
 {
   const W = await Signer.load(signerWasm, pin);
   W.init().seedFromMnemonic(new TextEncoder().encode(MNEMONIC));
   const FP = parseInt("73c5da0a", 16);
-  const IN = (i) => 24 + 176 * i, WS = (i) => 5016 + 220 * i;
+  const IN = (i) => 24 + 176 * i, WS = (i) => 5016 + 522 * i;  // a 2-byte length, then the script
   const sha = (b) => createHash("sha256").update(b).digest();
   const refused = (what, plan, prevTxs, re) => {
     try {
@@ -298,24 +298,24 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   {
     const m = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of7_input.psbt`, FP);
     const rm = W.setPlan(m.plan).setPrevTxs(m.prevTxs).review();
-    ok("a seven-key witness script is not ours to sign; the P2WPKH beside it is", rm.nSign === 1 && rm.willSign[0] && !rm.willSign[1]);
+    ok("a seven-key witness script is signed beside the P2WPKH", rm.nSign === 2 && rm.willSign[0] && rm.willSign[1]);
   }
   const base = planFor(`${root}parser/build/vectors/own_p2wsh_2of3_1in.psbt`, FP);
   const fresh = () => Uint8Array.from(base.plan);
   // a witness script and an input script that agree with each other, but not with this test's intent
-  const rehash = (plan) => plan.set(sha(plan.subarray(WS(0) + 1, WS(0) + 1 + plan[WS(0)])), IN(0) + 49 + 2);
+  const rehash = (plan) => plan.set(sha(plan.subarray(WS(0) + 2, WS(0) + 2 + plan[WS(0)])), IN(0) + 49 + 2);
   {
     const plan = fresh();
-    for (let k = 0; k < 3; k++) plan[WS(0) + 1 + 1 + 34 * k + 5] ^= 1;  // a byte of every key, ours among them
+    for (let k = 0; k < 3; k++) plan[WS(0) + 2 + 1 + 34 * k + 5] ^= 1;  // a byte of every key, ours among them
     refused("a witness script that does not hash to the input's script is refused", plan, base.prevTxs, /NOT_OURS/);
     rehash(plan);
     refused("a multisig without our key is refused", plan, base.prevTxs, /NOT_OURS/);
   }
   for (const [what, mutate] of [
-    ["OP_CHECKMULTISIGVERIFY", (pl) => { pl[WS(0) + pl[WS(0)]] = 0xaf; }],
-    ["a threshold above the key count", (pl) => { pl[WS(0) + 1] = 0x54; }],
-    ["a key count that is not the number of keys", (pl) => { pl[WS(0) + pl[WS(0)] - 1] = 0x52; }],
-    ["an uncompressed key prefix", (pl) => { pl[WS(0) + 1 + 2] = 0x04; }],
+    ["OP_CHECKMULTISIGVERIFY", (pl) => { pl[WS(0) + 1 + pl[WS(0)]] = 0xaf; }],
+    ["a threshold above the key count", (pl) => { pl[WS(0) + 2] = 0x54; }],
+    ["a key count that is not the number of keys", (pl) => { pl[WS(0) + pl[WS(0)]] = 0x52; }],
+    ["an uncompressed key prefix", (pl) => { pl[WS(0) + 2 + 2] = 0x04; }],
   ]) {
     const plan = fresh();
     mutate(plan);
@@ -324,7 +324,7 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
   }
   {
     const plan = fresh();
-    plan.fill(0, WS(0), WS(0) + 220);
+    plan.fill(0, WS(0), WS(0) + 522);
     refused("a P2WSH input to be signed without its witness script is refused", plan, base.prevTxs, /SCRIPT/);
   }
   {
@@ -337,33 +337,33 @@ for (const [what, opts] of [["BIP44", { purpose: 44 }], ["a hardened account", {
     plan[WS(0)] -= 1;  // shortening the 2-of-3 leaves OP_CHECKMULTISIG past its length
     refused("a byte past the witness script's length is refused", plan, base.prevTxs, /FORMAT/);
     const p2 = fresh();
-    p2.set(p2.subarray(WS(0), WS(0) + 220), WS(1));
+    p2.set(p2.subarray(WS(0), WS(0) + 522), WS(1));
     refused("a witness script for an input that is not there is refused", p2, base.prevTxs, /FORMAT/);
     const p3 = planFor(`${root}parser/build/vectors/own_p2wpkh_1in.psbt`, FP);
-    p3.plan.set(base.plan.subarray(WS(0), WS(0) + 220), WS(0));
+    p3.plan.set(base.plan.subarray(WS(0), WS(0) + 522), WS(0));
     refused("a witness script beside a P2WPKH input is refused", p3.plan, p3.prevTxs, /FORMAT/);
     const p4 = planFor(`${root}parser/build/vectors/own_with_p2wsh_2of7_input.psbt`, FP);
-    p4.plan.set(base.plan.subarray(WS(0), WS(0) + 220), WS(1));
+    p4.plan.fill(0, IN(1) + 132, IN(1) + 176);  // its key and sighash type: an input not to be signed
     refused("a witness script for a P2WSH input that is not ours is refused", p4.plan, p4.prevTxs, /FORMAT/);
   }
   {
     // the other shapes multisig_keys accepts: 3-of-3, and a 1-of-1 of 37 bytes, the shortest
     const ours = W.setPlan(fresh()).setPrevTxs(base.prevTxs).review() && W.sign()[0].pubkey;
     const plan = fresh();
-    plan[WS(0) + 1] = 0x53;
+    plan[WS(0) + 2] = 0x53;
     rehash(plan);
     check("a 3-of-3 is signed", W.setPlan(plan).setPrevTxs(base.prevTxs).review().nSign, 1);
     const one = fresh();
-    one.fill(0, WS(0), WS(0) + 220);
-    one.set([37, 0x51, 0x21, ...ours, 0x51, 0xae], WS(0));
+    one.fill(0, WS(0), WS(0) + 522);
+    one.set([37, 0, 0x51, 0x21, ...ours, 0x51, 0xae], WS(0));
     rehash(one);
     check("a 1-of-1 is signed", W.setPlan(one).setPrevTxs(base.prevTxs).review().nSign, 1);
   }
   for (const [what, mutate] of [
-    ["OP_0 as the threshold", (pl) => { pl[WS(0) + 1] = 0x00; }],
-    ["a key push that is not 33 bytes", (pl) => { pl[WS(0) + 2] = 0x20; }],
-    ["a length that is not 3 + 34n", (pl) => { pl[WS(0)] = 104; pl[WS(0) + 105] = 0; }],
-    ["the same key twice", (pl) => { pl.copyWithin(WS(0) + 2 + 34, WS(0) + 2, WS(0) + 2 + 34); }],
+    ["OP_0 as the threshold", (pl) => { pl[WS(0) + 2] = 0x00; }],
+    ["a key push that is not 33 bytes", (pl) => { pl[WS(0) + 3] = 0x20; }],
+    ["a length that is not 3 + 34n", (pl) => { pl[WS(0)] = 104; pl[WS(0) + 106] = 0; }],
+    ["the same key twice", (pl) => { pl.copyWithin(WS(0) + 3 + 34, WS(0) + 3, WS(0) + 3 + 34); }],
   ]) {
     const plan = fresh();
     mutate(plan);
@@ -800,7 +800,7 @@ for (const [what, bad] of [["a bad checksum", "abandon ".repeat(11) + "abandon"]
     }
   }
   try {
-    Q.seedFromSeedQR(new Uint8Array(800), new Uint8Array(300));
+    Q.seedFromSeedQR(new Uint8Array(2800), new Uint8Array(300));
     ok("an oversized SeedQR is refused", false);
   } catch (e) {
     ok("an oversized SeedQR is refused", e instanceof RangeError);
@@ -819,7 +819,7 @@ for (const [what, bad] of [["a bad checksum", "abandon ".repeat(11) + "abandon"]
 
 // --- a seed that does not fit is rejected before anything is written
 try {
-  S.seedFromMnemonic(new Uint8Array(1100).fill(0x78));
+  S.seedFromMnemonic(new Uint8Array(3100).fill(0x78));
   ok("an oversized mnemonic is refused", false);
 } catch (e) {
   ok("an oversized mnemonic is refused", e instanceof RangeError);

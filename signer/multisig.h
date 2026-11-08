@@ -1,7 +1,7 @@
 #ifndef CORE_MULTISIG_H
 #define CORE_MULTISIG_H
 
-/* A P2WSH sortedmulti or multi wallet of at most six keys, read from a coordinator's descriptor, BSMS record or
+/* A P2WSH sortedmulti or multi wallet of at most 15 keys, read from a coordinator's descriptor, BSMS record or
  * Coldcard-style setup file, or a primary path with a timelocked recovery path as Liana, Nunchuk and Keeper write
  * them. Only public keys: core.c decides which of them is ours */
 
@@ -11,9 +11,9 @@
 #include "address.h"
 
 #define MS_MAX_SIDE 3                     /* each side of an or_d */
-#define MS_MAX_KEYS (2 * MS_MAX_SIDE)     /* six keys of 34 bytes fit PLAN_MAX_WSCRIPT */
+#define MS_MAX_KEYS 15                    /* what CHECKMULTISIG takes in P2SH, and its script fits PLAN_MAX_WSCRIPT */
 #define MS_MAX_DEPTH (PLAN_MAX_DEPTH - 2) /* the origin path, leaving room for chain and index */
-#define MS_DESC_MAX 1024
+#define MS_DESC_MAX 2304
 
 typedef struct {
     uint32_t fingerprint;

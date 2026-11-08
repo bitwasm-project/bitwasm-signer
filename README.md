@@ -90,7 +90,7 @@ make check-hosts-agree       # and require all of them to produce the same bytes
 Single-signature P2WPKH ([BIP84](https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki)),
 P2SH-P2WPKH ([BIP49](https://github.com/bitcoin/bips/blob/master/bip-0049.mediawiki)),
 P2TR key path ([BIP86](https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki)) and P2WSH
-multisig of at most six keys ([BIP48](https://github.com/bitcoin/bips/blob/master/bip-0048.mediawiki)),
+multisig of at most 15 keys ([BIP48](https://github.com/bitcoin/bips/blob/master/bip-0048.mediawiki)),
 a primary path with a timelocked recovery path, each a key or a `multi` of up to three, as
 [Liana](https://github.com/wizardsardine/liana), Nunchuk and Bitcoin Keeper write it (our key on either path or, once
 registered, on both),

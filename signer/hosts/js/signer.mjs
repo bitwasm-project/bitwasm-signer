@@ -7,7 +7,7 @@
 // the structs themselves and `make check-layout` fails if these drift from it.
 
 const L = {
-  plan: { size: 8536, nInputs: 16, nOutputs: 17 },
+  plan: { size: 13368, nInputs: 16, nOutputs: 17 },
   review: { size: 64, totalIn: 0, totalOut: 8, fee: 16, owner: 24, willSign: 40, nSign: 56 },
   facts: { size: 40, fingerprint: 0, testnet: 4, wallet: 5, input: 6, output: 22 },
   display: {
@@ -16,7 +16,7 @@ const L = {
   },
   sig: { size: 108, input: 0, pubkey: 1, sigLen: 34, sig: 35 },
   message: { size: 2125, address: 0, textKind: 75, text: 76, textCap: 2049 },
-  multisig: { size: 1136, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 28, receiveCap: 75, descriptor: 103, descriptorCap: 1024, primary: 1127, threshold2: 1128, ours2: 1129, lock: 1132 },
+  multisig: { size: 2452, threshold: 0, n: 1, ours: 2, kind: 3, fingerprints: 4, receive: 64, receiveCap: 75, descriptor: 139, descriptorCap: 2304, primary: 2443, threshold2: 2444, ours2: 2445, lock: 2448 },
   limits: { maxInputs: 16, maxOutputs: 16, xpubMax: 120, descMax: 180, addressMax: 75, prevtxMax: 32768 },
 };
 
@@ -608,7 +608,7 @@ export class Signer {
     return new TextDecoder().decode(raw.subarray(0, nul < 0 ? raw.length : nul));
   }
 
-  /** Registers a P2WSH sortedmulti or multi wallet of at most six keys, from a descriptor, a BSMS 1.0 record or a
+  /** Registers a P2WSH sortedmulti or multi wallet of at most 15 keys, from a descriptor, a BSMS 1.0 record or a
    *  Coldcard setup file, or a Liana, Nunchuk or Keeper or_d wallet from its descriptor. Show what this returns, the receive address
    *  above all, before trusting it: from then on the wallet's inputs are signed only when they are the
    *  wallet's, and its outputs at our paths are change. Loading another seed unloads it. */

@@ -43,7 +43,7 @@ way it is not for `parser.wasm`.
 ```
 signer_init(flags)
 signer_seed_from_mnemonic(...)   or   signer_seed_from_seedqr(...)   or   signer_seed_from_electrum(...)   or   signer_load_seed()
-signer_plan()        <- write the 8536-byte plan_t here
+signer_plan()        <- write the 13368-byte plan_t here
 signer_set_prevtx(i, off, len)   for each input, after writing into signer_prevtx()
 signer_review()      -> re-derives keys, decides what is ours, computes the fee
 signer_display()     -> the strings and amounts to show
@@ -64,7 +64,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 |---|---|
 | `signer_input() -> ptr` | the mnemonic or a SeedQR payload followed by the passphrase, a 64-byte seed, entropy or dice rolls for a new mnemonic, an address to find, a message to sign, or a multisig setup |
 | `signer_input_cap() -> u32` | how many bytes that is (1024); check before writing |
-| `signer_plan() -> ptr` | the `plan_t`, 8536 bytes, copied verbatim from `parser_plan()` |
+| `signer_plan() -> ptr` | the `plan_t`, 13368 bytes, copied verbatim from `parser_plan()` |
 | `signer_prevtx() -> ptr` | the `non_witness_utxo` bytes, laid out however you like within 32768 |
 | `signer_review_output() -> ptr` | `core_review_t`, 64 bytes |
 | `signer_display_output() -> ptr` | `core_display_t`, 2968 bytes |
@@ -79,7 +79,7 @@ review fails the hash, and a plan swapped in before it is the plan that gets dis
 | `signer_seedqr_output() -> ptr` | a SeedQR made from a mnemonic, at most 96 bytes. Secret: clear it once read |
 | `signer_message_output() -> ptr` | `core_message_t`, 2125 bytes: what to show before signing a message |
 | `signer_message_sig() -> ptr` | the BIP137 signature, 65 bytes |
-| `signer_multisig_output() -> ptr` | `core_multisig_t`, 1136 bytes: what to show before trusting a multisig |
+| `signer_multisig_output() -> ptr` | `core_multisig_t`, 2452 bytes: what to show before trusting a multisig |
 | `signer_cbor_output() -> ptr` | a crypto-account or crypto-output, CBOR, at most 1024 bytes |
 | `signer_words_output() -> ptr` | word indices from the word entry calls, little-endian uint16, at most 2048. The final words follow from the words typed before them: clear it once read |
 | `signer_wordlist() -> ptr` | the English BIP39 wordlist the module checks against, 2048 x 8 bytes in index order, each word NUL-padded. Read-only: hosts show the words of the indices above from it |
@@ -155,10 +155,10 @@ interpreter, on an M-series Mac. Chicory and WasmKit are slower still, so their 
 
 ## Registering a multisig
 
-Without a registered wallet, a P2WSH input is signed when its witness script is a multisig of at most six
+Without a registered wallet, a P2WSH input is signed when its witness script is a multisig of at most 15
 keys that hashes to its script and holds our key, and P2WSH change is shown as an external output: the signer
 cannot tell the cosigners' keys from anyone else's. `signer_multisig_load` gives it those keys. It takes a
-`signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` or `wsh(multi(k,...))` descriptor of up to six keys
+`signer_multisig_load` accepts a `wsh(sortedmulti(k,...))` or `wsh(multi(k,...))` descriptor of up to 15 keys
 (with `/<0;1>/*`, `/**` or `/0/*` after each key, and its checksum checked when present), a BSMS 1.0 record (BIP129), or the Coldcard setup file.
 `signer_multisig_load_cbor` accepts a BCR-2020-010 `crypto-output` for the same BIP48 multipath wallet shapes
 (`sortedmulti` 407 or `multi` 406).
@@ -215,7 +215,7 @@ be the bytes Core gives for the same key. P2TR has no BIP137 form; BIP322 is not
 | 3 | `NOT_OURS` | an input claims our fingerprint, but its key does not produce its script |
 | 4 | `NOTHING_TO_SIGN` | no input in the plan is ours |
 | 5 | `SIGHASH` | a sighash type this signer does not allow |
-| 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most six keys |
+| 6 | `SCRIPT` | an input to be signed is not P2WPKH, P2SH-P2WPKH, P2TR, or P2WSH with a multisig of at most 15 keys |
 | 7 | `PREVTX_MISSING` | two or more inputs including SegWit v0, and no previous transaction, without `signer_init`'s bit 2 |
 | 8 | `PREVTX_MISMATCH` | the previous transaction disagrees with the claimed amount, txid or vout |
 | 9 | `FEE` | the fee does not add up, or overflows |
@@ -283,7 +283,7 @@ original PSBT and leaves every other byte alone.
 | 75 | 1 | `text_kind`: 0 the message itself, 1 its hex |
 | 76 | 2049 | `text`, NUL-terminated |
 
-### `core_multisig_t` (1136 bytes)
+### `core_multisig_t` (2452 bytes)
 
 | offset | size | field |
 |---:|---:|---|
@@ -291,13 +291,13 @@ original PSBT and leaves every other byte alone.
 | 1 | 1 | `n`, how many keys |
 | 2 | 1 | `ours`, which of them; for `or_d` the primary path's keys come first |
 | 3 | 1 | `kind`: 0 `sortedmulti`, 8 `multi`, or 1 `or_d` with 2 set for a single recovery key's `v:pk` and 4 for `after()` |
-| 4 | 6 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
-| 28 | 75 | `receive`, the first receive address, NUL-terminated |
-| 103 | 1024 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
-| 1127 | 1 | `primary`: for `or_d`, how many of the keys are the primary path's |
-| 1128 | 1 | `threshold2`: for `or_d`, the recovery path's threshold |
-| 1129 | 1 | `ours2`: for `or_d`, our key on the recovery path when `ours` is on the primary too, else 0xff |
-| 1132 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery keys can spend |
+| 4 | 15 x 4 | `fingerprints[]`, as integers (73c5da0a is 0x73c5da0a) |
+| 64 | 75 | `receive`, the first receive address, NUL-terminated |
+| 139 | 2304 | `descriptor`, with xpub or tpub, each key's `<a;b>` and its checksum, NUL-terminated |
+| 2443 | 1 | `primary`: for `or_d`, how many of the keys are the primary path's |
+| 2444 | 1 | `threshold2`: for `or_d`, the recovery path's threshold |
+| 2445 | 1 | `ours2`: for `or_d`, our key on the recovery path when `ours` is on the primary too, else 0xff |
+| 2448 | 4 | `lock`: for `or_d`, the `older()` or `after()` value after which the recovery keys can spend |
 
 ## Signatures are deterministic
 
@@ -329,7 +329,7 @@ is still deterministic.
 
 ## What this module does not do
 
-P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most six keys
+P2WPKH (BIP84), P2SH-P2WPKH (BIP49), P2TR key path (BIP86) and P2WSH multisig of at most 15 keys
 (BIP48), `SIGHASH_ALL` and Taproot's `SIGHASH_DEFAULT`. P2WSH change is shown as change only for a registered multisig
 wallet; without one it is shown as an external output and counted in `spend`. No taproot multisig, no script trees,
 no legacy P2PKH
