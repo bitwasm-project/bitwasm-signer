@@ -47,6 +47,12 @@ const MULTISIG = {
   cosigners: ["[3f635a63/48h/0h/0h/2h]tpubDFfBj3CGmAdW4oT1kbwY9bajaFrzRGxoZuH3bfqECrkhhUNBJr6biaHooTNdWP8E7U3mwZdxZDSSvXgp4GvW6tNQ38PzXFX4GB4vp5RLCfW",
               "[b8688df1/48h/0h/0h/2h]tpubDFnc6MoxQh6V2NoQKZmq4a9HFuNxMD2cR785reRSe54JwcYH6KK5NQjAspMUmQp5qXdscseFqD4H3VuRVvNhizP4Ku87N5BfuBUQJGrfe1Y"],
 };
+// BIP48 P2SH-P2WSH, script type 1, of the same three seeds
+const NESTED = {
+  tprv: "tprv8hRqYMHqbXZkAgUrzj8B6NcGcmx29UP4jxbJSXPJUH9mXSKtxcPyFdKnxjCKkD2uBoae7TQ22xZknLTr1rJ5fpFWXWcK4mfkcNzesF4BRfG",
+  cosigners: ["[3f635a63/48h/0h/0h/1h]tpubDFfBj3CGmAdW3kvTz4Q3DsgBhtuH6LJHkHcxXcqYwYuGGtbQeFkhxfVcWdY2mb5ZGG1kdGtGgKunBRRRqtbidwDYYpbcGUGqGVadaFjZQyE",
+              "[b8688df1/48h/0h/0h/1h]tpubDFnc6MoxQh6UxWdbz1NmbDACTCt8nE5f9DyCfGdnMuYXAKqoT3sVMF7LRni7mcYzWZyT3xSqzmXikVgXiq9NwizCJBPpFQEpwk4P4iCrULb"],
+};
 const FINGERPRINT = "73c5da0a";
 const MNEMONIC = "abandon ".repeat(11) + "about";
 const WALLET = "diff";
@@ -104,6 +110,11 @@ for (const [chain, internal] of [[0, false], [1, true]]) {
   const desc = `wsh(sortedmulti(2,${keys.join(",")}))`;
   const ck = JSON.parse(cli("getdescriptorinfo", desc)).checksum;
   imports.push({ desc: `${desc}#${ck}`, timestamp: "now", active: true, internal, range: [0, 20] });
+}
+for (const chain of [0, 1]) {
+  const keys = [`[${FINGERPRINT}/48h/0h/0h/1h]${NESTED.tprv}`, ...NESTED.cosigners].map((k) => `${k}/${chain}/*`);
+  const desc = `sh(wsh(sortedmulti(2,${keys.join(",")})))`;
+  imports.push({ desc: `${desc}#${JSON.parse(cli("getdescriptorinfo", desc)).checksum}`, timestamp: "now", range: [0, 20] });
 }
 // The 2-of-7 at account 1: ours beside the three cosigner seeds at accounts 1 and 3, which plan version 4 signs
 const SEVEN = [

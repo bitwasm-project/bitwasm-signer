@@ -291,6 +291,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
     let mut tap = Cand::NONE;
     let mut finalized = false;
     let mut wpkh_redeem = false;
+    let mut wsh_redeem = false;
     let mut has_tapsig = false;
     let mut has_merkle = false;
     let mut sighash: u32 = 0xffff_ffff;
@@ -327,6 +328,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
                     return Err(Err::Format);
                 }
                 wpkh_redeem |= e.key[0] == 0x04 && e.val.len() == 22 && e.val[0] == 0 && e.val[1] == 20;
+                wsh_redeem |= e.key[0] == 0x04 && e.val.len() == 34 && e.val[0] == 0 && e.val[1] == 32;
                 if e.key[0] == 0x05 {
                     ws = Some(e.val);
                 }
@@ -479,10 +481,12 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
     // Only a P2WPKH (or a P2SH whose redeem script is one) with our derivation and no signature yet,
     // or a P2TR key-path spend with no script tree and no signature yet, is one this signer will sign
     let mut is_tap = false;
+    // P2WSH, or P2SH-P2WSH: the signer checks the P2SH hash against the witness script
+    let wsh = in_.spk.is_p2wsh() || (in_.spk.len == 23 && in_.spk.is_wpkh() && wsh_redeem);
     let chosen = if in_.spk.is_wpkh() && (in_.spk.len == 22 || wpkh_redeem) && bip32.found && !signed_by_cand {
         in_.sighash_type = if sighash == 0xffff_ffff { 0x01 } else { sighash as u8 };
         Some(bip32)
-    } else if ((in_.spk.is_p2wsh() && ws.is_some_and(|w| w.len() <= MAX_WSCRIPT)) || in_.spk.is_p2pkh())
+    } else if ((wsh && ws.is_some_and(|w| w.len() <= MAX_WSCRIPT)) || in_.spk.is_p2pkh())
         && bip32.found
         && !signed_by_cand
     {
@@ -512,7 +516,7 @@ fn parse_input(r: &mut Reader, idx: usize, fp: u32, in_buf_base: usize, out: &mu
     match chosen {
         Some(c) if !finalized => {
             in_.key = KeyPath { depth: c.depth, fingerprint: fp, path: c.path };
-            if let (true, Some(w)) = (in_.spk.is_p2wsh(), ws) {
+            if let (true, Some(w)) = (wsh, ws) {
                 let dst = &mut out.plan.wscripts[idx];
                 dst.len = w.len() as u16;
                 dst.bytes[..w.len()].copy_from_slice(w);
