@@ -194,7 +194,7 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
     plan_input_t *in = &plan.inputs[idx];
     const kv_t *wu = NULL, *nwu = NULL, *ws = NULL;
     cand_t bip32 = {0}, tap = {0};
-    int finalized = 0, has_tapsig = 0, has_merkle = 0, signed_by_cand = 0, wpkh_redeem = 0;
+    int finalized = 0, has_tapsig = 0, has_merkle = 0, signed_by_cand = 0, wpkh_redeem = 0, wsh_redeem = 0, wsh;
     uint32_t sighash = 0xffffffffu;
     int rc = read_map(r, kv, &n, &in_map_end[idx]);
     if (rc) return rc;
@@ -221,6 +221,7 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
         case 0x05:
             if (e->klen != 1) return P_ERR_FORMAT;
             wpkh_redeem |= e->key[0] == 0x04 && e->vlen == 22 && e->val[0] == 0 && e->val[1] == 20;
+            wsh_redeem |= e->key[0] == 0x04 && e->vlen == 34 && e->val[0] == 0 && e->val[1] == 32;
             if (e->key[0] == 0x05) ws = e;
             break;
         case 0x06: {
@@ -305,12 +306,13 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
     if (sighash != 0xffffffffu && sighash > 0xff) return P_ERR_UNSUPPORTED;
 
     const cand_t *c = NULL;
+    /* P2WSH, or P2SH-P2WSH: the signer checks the P2SH hash against the witness script */
+    wsh = is_p2wsh(&in->spk) || (in->spk.len == 23 && is_wpkh(&in->spk) && wsh_redeem);
     /* A P2SH only when its redeem script is P2WPKH's: one we cosign as multisig is not this signer's */
     if (is_wpkh(&in->spk) && (in->spk.len == 22 || wpkh_redeem) && bip32.found && !signed_by_cand) {
         c = &bip32;
         in->sighash_type = sighash == 0xffffffffu ? 0x01 : (uint8_t)sighash;
-    } else if (((is_p2wsh(&in->spk) && ws && ws->vlen <= PLAN_MAX_WSCRIPT) || is_p2pkh(&in->spk)) && bip32.found &&
-               !signed_by_cand) {
+    } else if (((wsh && ws && ws->vlen <= PLAN_MAX_WSCRIPT) || is_p2pkh(&in->spk)) && bip32.found && !signed_by_cand) {
         c = &bip32;
         in->sighash_type = sighash == 0xffffffffu ? 0x01 : (uint8_t)sighash;
     } else if (is_p2tr(&in->spk) && tap.found && !has_merkle && !has_tapsig) {
@@ -329,7 +331,7 @@ static int parse_input(rd_t *r, unsigned int idx, uint32_t fp) {
         in->key.depth = c->depth;
         in->key.fingerprint = fp;
         memcpy(in->key.path, c->path, sizeof(c->path));
-        if (ws && is_p2wsh(&in->spk)) {
+        if (ws && wsh) {
             plan.wscripts[idx].len = (uint16_t)ws->vlen;
             memcpy(plan.wscripts[idx].bytes, ws->val, ws->vlen);
         }

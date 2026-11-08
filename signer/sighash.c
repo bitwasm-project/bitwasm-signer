@@ -77,13 +77,17 @@ int sighash_bip143_p2wpkh(const plan_t *p, unsigned int index, const uint8_t pkh
 
 int sighash_bip143_p2wsh(const plan_t *p, unsigned int index, const plan_wscript_t *ws, uint8_t out[32]) {
     const plan_input_t *in = &p->inputs[index];
-    uint8_t h[32], code[3 + PLAN_MAX_WSCRIPT];
+    uint8_t redeem[34] = {0x00, 32}, h[20], code[3 + PLAN_MAX_WSCRIPT];
     size_t o;
 
     if (index >= p->n_inputs || ws->len > PLAN_MAX_WSCRIPT) return 0;
-    sha256(ws->bytes, ws->len, h);
-    if (!(in->spk.len == 34 && in->spk.bytes[0] == 0 && in->spk.bytes[1] == 32 && !memcmp(in->spk.bytes + 2, h, 32)))
-        return 0; /* the witness script is not what this input's script pays to */
+    sha256(ws->bytes, ws->len, redeem + 2);
+    hash160(redeem, sizeof(redeem), h);
+    /* the witness script has to be what this input's script pays to, as P2WSH or P2SH-P2WSH */
+    if (!(in->spk.len == 34 && !memcmp(in->spk.bytes, redeem, 34)) &&
+        !(in->spk.len == 23 && in->spk.bytes[0] == 0xa9 && in->spk.bytes[1] == 20 && in->spk.bytes[22] == 0x87 &&
+          !memcmp(in->spk.bytes + 2, h, 20)))
+        return 0;
     /* scriptCode with its compact size: 0xfd and two bytes from 253, as 15 keys reach */
     if (ws->len < 0xfd) {
         code[0] = (uint8_t)ws->len, o = 1;

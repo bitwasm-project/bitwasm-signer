@@ -147,13 +147,15 @@ int core_path_xpub(const uint32_t *path, unsigned int depth, char out[CORE_XPUB_
  * keys' paths are shown as change. Unloading the seed unloads it too */
 #define CORE_MULTISIG_DESC_MAX 2304
 #define CORE_MULTISIG_MAX_KEYS 15
-/* kind is SORTEDMULTI, MULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock) */
+/* kind is SORTEDMULTI, MULTI, or OR_D with the flags for a single recovery key's v:pk and for after(lock); SH marks
+ * sortedmulti or multi nested in P2SH, sh(wsh(...)) */
 enum {
     CORE_WALLET_SORTEDMULTI = 0,
     CORE_WALLET_OR_D = 1,
     CORE_WALLET_OR_D_PK = 2,
     CORE_WALLET_OR_D_AFTER = 4,
-    CORE_WALLET_MULTI = 8
+    CORE_WALLET_MULTI = 8,
+    CORE_WALLET_SH = 16
 };
 typedef struct {
     uint8_t threshold, n, ours; /* ours indexes fingerprints[]; for OR_D the primary's threshold, its keys first */

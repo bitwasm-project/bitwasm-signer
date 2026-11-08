@@ -46,6 +46,14 @@ _Static_assert(MS_MAX_KEYS == CORE_MULTISIG_MAX_KEYS && MS_SORTEDMULTI == CORE_W
                    MS_OR_D_AFTER == CORE_WALLET_OR_D_AFTER && MS_MULTI == CORE_WALLET_MULTI,
                "wallet kinds");
 
+static int spk_type(const plan_script_t *s);
+
+/* P2WSH, or a P2SH the plan gives a witness script for: P2SH-P2WSH, which the parser passes on only so */
+static int is_wsh(const plan_script_t *s, const plan_wscript_t *ws) {
+    const int t = spk_type(s);
+    return t == SPK_P2WSH || (t == SPK_P2SH_P2WPKH && ws && ws->len);
+}
+
 static int spk_type(const plan_script_t *s) {
     if (s->len == 22 && s->bytes[0] == 0x00 && s->bytes[1] == 20) return SPK_P2WPKH;
     if (s->len == 23 && s->bytes[0] == 0xa9 && s->bytes[1] == 20 && s->bytes[22] == 0x87) return SPK_P2SH_P2WPKH;
@@ -155,20 +163,21 @@ static int owns(const plan_keypath_t *key, const plan_script_t *spk, const plan_
     int type = spk_type(spk), ok = 0;
 
     if (key->fingerprint != master_fp || !bip32_derive(ctx, &master, key->path, key->depth, node)) return 0;
-    if ((type == SPK_P2WPKH || type == SPK_P2SH_P2WPKH) && bip32_pubkey(ctx, node->key, pub)) {
+    if ((type == SPK_P2WPKH || type == SPK_P2SH_P2WPKH) && !is_wsh(spk, ws) && bip32_pubkey(ctx, node->key, pub)) {
         ok = wpkh_spk(pub, type == SPK_P2SH_P2WPKH, mine) == spk->len && !memcmp(mine, spk->bytes, spk->len);
     } else if (type == SPK_P2PKH && bip32_pubkey(ctx, node->key, pub)) {
         hash160(pub, 33, mine);
         ok = !memcmp(mine, spk->bytes + 3, 20);
     } else if (type == SPK_P2TR && taproot_tweak(node->key, xonly, &kp)) {
         ok = !memcmp(xonly, spk->bytes + 2, 32);
-    } else if (type == SPK_P2WSH && ws && bip32_pubkey(ctx, node->key, pub)) {
+    } else if (is_wsh(spk, ws) && bip32_pubkey(ctx, node->key, pub)) {
         unsigned int n = multisig_keys(ws), found = 0;
+        uint8_t want[34];
+        const int commits = ms_spk(ws, type != SPK_P2WSH, want) == spk->len && !memcmp(want, spk->bytes, spk->len);
         or_d_t d;
-        sha256(ws->bytes, ws->len, mine);
-        if (!memcmp(mine, spk->bytes + 2, 32) && n) {
+        if (commits && n) {
             for (unsigned int i = 0; i < n; i++) found |= !memcmp(ws->bytes + 2 + 34 * i, pub, 33);
-        } else if (!memcmp(mine, spk->bytes + 2, 32) && or_d_keys(ws, &d)) {
+        } else if (commits && or_d_keys(ws, &d)) {
             hash160(pub, 33, mine);
             found = d.hash && !memcmp(d.hash, mine, 20);
             for (unsigned int i = 0; i < d.n; i++) found |= !memcmp(d.keys[i], pub, 33);
@@ -213,8 +222,7 @@ static NOINLINE int format_ok(const plan_t *p) {
         if (w->len > PLAN_MAX_WSCRIPT) return 0;
         for (unsigned int k = w->len; k < PLAN_MAX_WSCRIPT; k++)
             if (w->bytes[k]) return 0;
-        if (w->len && (i >= p->n_inputs || spk_type(&p->inputs[i].spk) != SPK_P2WSH || !p->inputs[i].key.depth))
-            return 0;
+        if (w->len && (i >= p->n_inputs || !is_wsh(&p->inputs[i].spk, w) || !p->inputs[i].key.depth)) return 0;
     }
     for (unsigned int i = 0; i < PLAN_MAX_OUTPUTS; i++) {
         const plan_output_t *o = &p->outputs[i];
@@ -262,35 +270,40 @@ static const ms_key_t *wallet_key(const plan_keypath_t *k) {
     return NULL;
 }
 
-/* Is our key's step after the xpub its change one? Only for a path in_wallet_at() accepted */
+/* Is our key's step after the xpub its change one? Only for a path wallet_key() accepted */
 static int wallet_change(const plan_keypath_t *k) {
     const ms_key_t *m = wallet_key(k);
     return k->path[m->depth] == m->child[1];
 }
 
-/* Is this key path ours in the registered wallet, and the witness script the one the wallet makes there? With
- * ws NULL, writes that script's P2WSH hash to spk_hash instead */
-static int in_wallet_at(const plan_keypath_t *k, const plan_wscript_t *ws, uint8_t spk_hash[32]) {
+/* The witness script the registered wallet makes at this key path of ours, or 0 */
+static int wallet_wscript(const plan_keypath_t *k, plan_wscript_t *out) {
     const ms_key_t *m = wallet_key(k);
+    return m && k->path[m->depth + 1] < MAX_ADDRESS_INDEX &&
+           ms_wscript(&wallet, (uint32_t)wallet_change(k), k->path[m->depth + 1], out);
+}
+
+/* Is this key path ours in the registered wallet, the witness script the one it makes there, and spk nested as it
+ * was registered: P2WSH, or P2SH-P2WSH for sh(wsh()) */
+static int in_wallet(const plan_keypath_t *k, const plan_script_t *spk, const plan_wscript_t *ws) {
     plan_wscript_t mine;
-    if (!m || k->path[m->depth + 1] >= MAX_ADDRESS_INDEX ||
-        !ms_wscript(&wallet, (uint32_t)wallet_change(k), k->path[m->depth + 1], &mine))
-        return 0;
-    if (!ws) return sha256(mine.bytes, mine.len, spk_hash), 1;
-    return mine.len == ws->len && !memcmp(mine.bytes, ws->bytes, ws->len);
+    return wallet_wscript(k, &mine) && mine.len == ws->len && !memcmp(mine.bytes, ws->bytes, ws->len) &&
+           (spk_type(spk) != SPK_P2WSH) == wallet.sh;
 }
 
-static int in_wallet(const plan_keypath_t *k, const plan_wscript_t *ws) {
-    return in_wallet_at(k, ws, NULL);
+/* Whether the registered wallet pays spk at this key path of ours */
+static int wallet_pays(const plan_keypath_t *k, const plan_script_t *spk) {
+    plan_wscript_t ws;
+    uint8_t want[34];
+    return wallet_wscript(k, &ws) && ms_spk(&ws, wallet.sh, want) == spk->len && !memcmp(want, spk->bytes, spk->len);
 }
 
-/* A P2WSH output is change only with a registered wallet, when we sign one of its inputs, and when the wallet's
- * keys at that path hash to the output's script */
+/* A P2WSH or P2SH-P2WSH output is change only with a registered wallet, when we sign one of its inputs, and when
+ * the wallet's keys at that path make the output's script */
 static NOINLINE int wallet_owner(const plan_t *p, const core_review_t *r, const plan_output_t *o) {
-    uint8_t h[32];
-    if (wallet_ours < 0 || !in_wallet_at(&o->key, NULL, h) || memcmp(h, o->spk.bytes + 2, 32)) return CORE_OUT_EXTERNAL;
+    if (wallet_ours < 0 || !wallet_pays(&o->key, &o->spk)) return CORE_OUT_EXTERNAL;
     for (unsigned int i = 0; i < p->n_inputs; i++)
-        if (r->will_sign[i] && spk_type(&p->inputs[i].spk) == SPK_P2WSH)
+        if (r->will_sign[i] && is_wsh(&p->inputs[i].spk, &p->wscripts[i]))
             return wallet_change(&o->key) ? CORE_OUT_CHANGE : CORE_OUT_SELF;
     return CORE_OUT_EXTERNAL;
 }
@@ -318,8 +331,11 @@ static NOINLINE int output_owner(const plan_t *p, const core_review_t *r, const 
 
     uint32_t root[3];
     unsigned int d;
+    int w;
 
     if (type == SPK_P2WSH) return wallet_owner(p, r, o);
+    /* A P2SH is the wallet's only as sh(wsh()) pays it there; else it may be our P2SH-P2WPKH */
+    if (type == SPK_P2SH_P2WPKH && wallet.sh && (w = wallet_owner(p, r, o)) != CORE_OUT_EXTERNAL) return w;
     d = purpose && k->depth >= 3 ? account_root(purpose & ~H, k->path[k->depth - 3] & ~H, root) : 0;
     /* Either coin type, as SeedSigner has it: a signed input must still be on the very same account */
     if (d == 3 && (k->path[1] == H || k->path[1] == (1 | H))) root[1] = k->path[1];
@@ -426,11 +442,13 @@ int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core
         r->total_in += in->amount;
         if (r->total_in > MAX_MONEY) return CORE_ERR_FORMAT;
         if (in->key.depth == 0 || in->key.fingerprint != master_fp) continue;
-        if (type == SPK_OTHER || (type == SPK_P2WSH && !wscript_known(&p->wscripts[i]))) return CORE_ERR_SCRIPT;
+        if (type == SPK_OTHER || (is_wsh(&in->spk, &p->wscripts[i]) && !wscript_known(&p->wscripts[i])))
+            return CORE_ERR_SCRIPT;
         if (type != SPK_P2TR ? in->sighash_type != 0x01 : in->sighash_type > 0x01) return CORE_ERR_SIGHASH;
         if (!owns(&in->key, &in->spk, &p->wscripts[i], &node)) return CORE_ERR_NOT_OURS;
         wipe(&node, sizeof(node));
-        if (type == SPK_P2WSH && wallet_ours >= 0 && !in_wallet(&in->key, &p->wscripts[i])) return CORE_ERR_WALLET;
+        if (is_wsh(&in->spk, &p->wscripts[i]) && wallet_ours >= 0 && !in_wallet(&in->key, &in->spk, &p->wscripts[i]))
+            return CORE_ERR_WALLET;
         r->will_sign[i] = 1;
         r->n_sign++;
         has_v0 |= type != SPK_P2TR;
@@ -468,7 +486,6 @@ int core_review(const plan_t *p, const core_prevtx_t prev[PLAN_MAX_INPUTS], core
 
 int core_facts(const plan_t *p, core_facts_t *f) {
     bip32_node_t node;
-    uint8_t h[32];
     wipe(f, sizeof(*f));
     if (!seed_loaded) return CORE_ERR_NO_SEED;
     f->fingerprint = master_fp;
@@ -480,15 +497,15 @@ int core_facts(const plan_t *p, core_facts_t *f) {
             continue;
         if (owns(&in->key, &in->spk, &p->wscripts[i], &node)) f->input[i] |= CORE_FACT_OURS;
         wipe(&node, sizeof(node));
-        if (f->wallet && in_wallet(&in->key, &p->wscripts[i])) f->input[i] |= CORE_FACT_IN_WALLET;
+        if (f->wallet && in_wallet(&in->key, &in->spk, &p->wscripts[i])) f->input[i] |= CORE_FACT_IN_WALLET;
     }
     for (unsigned int i = 0; i < p->n_outputs && i < PLAN_MAX_OUTPUTS; i++) {
         const plan_output_t *o = &p->outputs[i];
         if (!o->key.depth || !keypath_ok(&o->key) || !script_ok(&o->spk)) continue;
         if (owns(&o->key, &o->spk, NULL, &node)) f->output[i] |= CORE_FACT_OURS;
         wipe(&node, sizeof(node));
-        if (f->wallet && spk_type(&o->spk) == SPK_P2WSH && in_wallet_at(&o->key, NULL, h) &&
-            !memcmp(h, o->spk.bytes + 2, 32))
+        if (f->wallet && (spk_type(&o->spk) == SPK_P2WSH || spk_type(&o->spk) == SPK_P2SH_P2WPKH) &&
+            wallet_pays(&o->key, &o->spk))
             f->output[i] |= wallet_change(&o->key) ? CORE_FACT_CHANGE : CORE_FACT_RECEIVE;
     }
     return CORE_OK;
@@ -591,7 +608,7 @@ static int sign_input(const plan_t *p, unsigned int i, const plan_keypath_t *key
         uint32_t counter = 0;
         ok = bip32_pubkey(ctx, node.key, s->pubkey);
         hash160(s->pubkey, 33, pkh);
-        ok = ok && (spk_type(&in->spk) == SPK_P2WSH   ? sighash_bip143_p2wsh(p, i, &p->wscripts[i], digest)
+        ok = ok && (is_wsh(&in->spk, &p->wscripts[i]) ? sighash_bip143_p2wsh(p, i, &p->wscripts[i], digest)
                     : spk_type(&in->spk) == SPK_P2PKH ? sighash_legacy(p, i, in->spk.bytes, in->spk.len, digest)
                                                       : sighash_bip143_p2wpkh(p, i, pkh, digest));
         /* Under anti-exfil, no low-R grinding: retrying would be the very churning it is there to limit */
@@ -677,7 +694,7 @@ static int sign_all(const plan_t *p, core_rng_t rng, core_sig_t sigs[PLAN_MAX_SI
         if (in->key.depth == 0 || in->key.fingerprint != master_fp) continue;
         ok = sign_input(p, i, &in->key, &sigs[*n_sigs], nonce_points[*n_sigs]);
         if (ok) (*n_sigs)++;
-        if (ok && spk_type(&in->spk) == SPK_P2WSH && other_key(&in->key, &other)) {
+        if (ok && is_wsh(&in->spk, &p->wscripts[i]) && other_key(&in->key, &other)) {
             ok = sign_input(p, i, &other, &sigs[*n_sigs], nonce_points[*n_sigs]);
             if (ok) (*n_sigs)++;
         }
@@ -995,7 +1012,7 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
 /* watch 0: our key must re-derive, for review and signing; 1: no seed needed, for core_multisig_address alone */
 static int multisig_register(const char *text, size_t len, int watch, core_multisig_t *out) {
     char stated[ADDRESS_MAX];
-    uint8_t pub[33], spk[34] = {0x00, 32};
+    uint8_t pub[33], spk[34];
     plan_wscript_t ws;
     bip32_node_t node;
     int ours = -1, ours2 = -1, rc = CORE_ERR_WALLET;
@@ -1016,13 +1033,13 @@ static int multisig_register(const char *text, size_t len, int watch, core_multi
         *(ours < 0 ? &ours : &ours2) = (int)i;
     }
     if ((!watch && ours < 0) || !ms_wscript(&wallet, 0, 0, &ws)) goto done;
-    sha256(ws.bytes, ws.len, spk + 2);
-    if (!address_encode(spk, sizeof(spk), network == CORE_TESTNET, out->receive)) goto done;
+    if (!address_encode(spk, ms_spk(&ws, wallet.sh, spk), network == CORE_TESTNET, out->receive)) goto done;
     if (stated[0] && strcmp(stated, out->receive)) goto done; /* the coordinator derived some other wallet */
     if (!ms_descriptor(&wallet, network == CORE_TESTNET, out->descriptor)) goto done;
     out->threshold = wallet.threshold, out->n = wallet.n, out->ours = (uint8_t)ours;
-    out->kind = wallet.kind, out->lock = wallet.lock, out->primary = wallet.primary,
-    out->threshold2 = wallet.threshold2, out->ours2 = (uint8_t)(ours2 < 0 ? 0xff : ours2);
+    out->kind = (uint8_t)(wallet.kind | (wallet.sh ? CORE_WALLET_SH : 0)), out->lock = wallet.lock,
+    out->primary = wallet.primary, out->threshold2 = wallet.threshold2,
+    out->ours2 = (uint8_t)(ours2 < 0 ? 0xff : ours2);
     if (watch) out->ours = 0xff;
     for (unsigned int i = 0; i < wallet.n; i++) out->fingerprints[i] = wallet.keys[i].fingerprint;
     wallet_ours = ours, wallet_ours2 = ours2, wallet_watch = watch;
@@ -1042,15 +1059,14 @@ int core_multisig_watch(const char *text, size_t len, core_multisig_t *out) {
 }
 
 int core_multisig_address(uint32_t chain, uint32_t index, char out[ADDRESS_MAX]) {
-    uint8_t spk[34] = {0x00, 32};
+    uint8_t spk[34];
     plan_wscript_t ws;
 
     out[0] = 0;
     if (wallet_ours < 0 && !wallet_watch) return CORE_ERR_WALLET;
     if (chain > 1 || index >= MAX_ADDRESS_INDEX) return CORE_ERR_FORMAT;
     if (!ms_wscript(&wallet, chain, index, &ws)) return CORE_ERR_CRYPTO;
-    sha256(ws.bytes, ws.len, spk + 2);
-    return address_encode(spk, sizeof(spk), network == CORE_TESTNET, out) ? CORE_OK : CORE_ERR_CRYPTO;
+    return address_encode(spk, ms_spk(&ws, wallet.sh, spk), network == CORE_TESTNET, out) ? CORE_OK : CORE_ERR_CRYPTO;
 }
 
 int core_multisig_find_address(const char *addr, size_t len, uint32_t count) {
@@ -1065,11 +1081,12 @@ int core_multisig_find_address(const char *addr, size_t len, uint32_t count) {
         upper |= c >= 'A' && c <= 'Z';
         lower |= c >= 'a' && c <= 'z';
         other |= !(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z');
-        want[i] = c >= 'A' && c <= 'Z' ? (char)(c + 32) : c;
+        want[i] = c >= 'A' && c <= 'Z' && !wallet.sh ? (char)(c + 32) : c; /* base58 keeps its case */
     }
     want[len] = 0;
-    if (other || (upper && lower)) return -CORE_ERR_FORMAT;
-    if (len != 62 || memcmp(want, network == CORE_TESTNET ? "tb1q" : "bc1q", 4)) return -CORE_ERR_NOT_FOUND;
+    if (other || (upper && lower && !wallet.sh)) return -CORE_ERR_FORMAT;
+    if (wallet.sh ? len != 34 && len != 35 : len != 62 || memcmp(want, network == CORE_TESTNET ? "tb1q" : "bc1q", 4))
+        return -CORE_ERR_NOT_FOUND;
     for (uint32_t c = 0; rc == -CORE_ERR_NOT_FOUND && c < 2; c++) {
         for (uint32_t i = 0; rc == -CORE_ERR_NOT_FOUND && i < count; i++) {
             int r = core_multisig_address(c, i, got);
@@ -1118,11 +1135,13 @@ int core_account_cbor(uint32_t account, uint8_t *out, size_t cap) {
     return c.n > cap ? -CORE_ERR_FORMAT : (int)c.n;
 }
 
-/* crypto-output for the registered wallet: wsh(sortedmulti()) or wsh(multi()), the keys in the order given */
+/* crypto-output for the registered wallet: wsh(sortedmulti()) or wsh(multi()), in sh() too, the keys in the order
+ * given */
 int core_multisig_cbor(uint8_t *out, size_t cap) {
     cbor_t c = {out, 0, cap};
     if (wallet_ours < 0) return -CORE_ERR_WALLET;
     if (wallet.kind & MS_OR_D) return -CORE_ERR_FORMAT; /* BCR-2020-010 has no tag for a miniscript */
+    if (wallet.sh) cbor_head(&c, CBOR_TAG, 400);
     cbor_head(&c, CBOR_TAG, 401), cbor_head(&c, CBOR_TAG, wallet.kind == MS_MULTI ? 406 : 407);
     cbor_head(&c, CBOR_MAP, 2);
     cbor_head(&c, CBOR_UINT, 1), cbor_head(&c, CBOR_UINT, wallet.threshold);

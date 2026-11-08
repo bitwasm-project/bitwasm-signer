@@ -49,7 +49,13 @@ def wsh_script(path):
     return script.Script(script.multisig(2, sorted([key(path)] + cosigner_keys(path), key=lambda k: k.sec())).data)
 
 
+def nested(path):
+    return path.startswith("m/48h/0h/0h/1h")  # BIP48 script type 1: P2SH-P2WSH
+
+
 def spk(path):
+    if nested(path):
+        return script.p2sh(script.p2wsh(wsh_script(path)))
     if path.startswith("m/48h"):
         return script.p2wsh(wsh_script(path))
     if path.startswith("m/45h"):
@@ -112,6 +118,8 @@ def build(name, inputs, outputs, cosigned=False):
             inp.redeem_script = script.p2wpkh(key(path))
         if path and path.startswith("m/45h"):
             inp.redeem_script = multisig(path)
+        if path and nested(path):
+            inp.redeem_script = script.p2wsh(wsh_script(path))
         if path and path.startswith("m/48h"):
             inp.witness_script = wsh_script(path)
             for c, k in zip(COSIGNERS, cosigner_keys(path)):
@@ -125,6 +133,8 @@ def build(name, inputs, outputs, cosigned=False):
             o.bip32_derivations[key(path)] = DerivationPath(FP, path_list(path))
         if path and path.startswith("m/49h"):
             o.redeem_script = script.p2wpkh(key(path))
+        if path and nested(path):
+            o.redeem_script = script.p2wsh(wsh_script(path))
         if path and path.startswith("m/48h"):
             o.witness_script = wsh_script(path)
             for c, k in zip(COSIGNERS, cosigner_keys(path)):
@@ -158,6 +168,11 @@ build("own_mixed_p2wsh_nwu", [(A + "/0/0", 100000, 0, True), (W + "/0/2", 50000,
       [(None, 100000), (A + "/1/0", 49000)])
 build("own_with_p2wsh_2of7_input", [(A + "/0/0", 100000, 0, True), ("m/48h/0h/1h/2h/0/0", 30000, 0, True)],
       [(None, 100000), (A + "/1/0", 29000)])
+# P2SH-P2WSH, BIP48's script type 1, its change too; and beside a P2WPKH input
+N = "m/48h/0h/0h/1h"
+build("own_p2sh_p2wsh_2of3_1in", [(N + "/0/0", 100000, 0, False)], [(None, 60000), (N + "/1/0", 39000)])
+build("own_mixed_p2sh_p2wsh_nwu", [(A + "/0/0", 100000, 0, True), (N + "/0/2", 50000, 0, True)],
+      [(None, 100000), (N + "/1/0", 49000)])
 # BIP44 P2PKH, which the signer signs only with every input's previous transaction
 L = "m/44h/0h/0h"
 build("own_p2pkh_1in", [(L + "/0/0", 100000, 0, True)], [(None, 60000), (L + "/1/0", 39000)])

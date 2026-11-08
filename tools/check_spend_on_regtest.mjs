@@ -1,4 +1,4 @@
-// Spends or_d wallets and a 15-key multisig on regtest with signer.wasm's signature, to show it satisfies the script and not only
+// Spends or_d wallets, a 15-key multisig and a P2SH-P2WSH one on regtest with signer.wasm's signature, to show it satisfies the script and not only
 // matches Core's bytes. Core is given the cosigners' keys, never ours: descriptorprocesspsbt fills the PSBT,
 // parser.wasm and signer.wasm add our signature, Core adds the cosigners' and finalizes. Each case is tried once before its
 // timelock, where it has to be refused, and once after, where it has to be mined.
@@ -41,7 +41,7 @@ const pub = (k) => json("getdescriptorinfo", `pk(${k}/0/*)`).descriptor.replace(
 const withChecksum = (d) => `${d}#${json("getdescriptorinfo", d).checksum}`;
 
 // [name, policy with {o} for ours, {o2} ours again on 2 and 3, {c0}... the cosigners, the cosigners Core signs for,
-// the timelock]. The recovery cases give Core no key on the primary path, so only the recovery path can spend
+// the timelock, and "sh" to nest it in P2SH]. The recovery cases give Core no key on the primary path, so only the recovery path can spend
 const CASES = [
   ["Liana, ours the primary key", "or_d(pk({o}),and_v(v:pkh({c0}),older(10)))", [], null],
   ["Liana, ours the recovery key", "or_d(pk({c0}),and_v(v:pkh({o}),older(10)))", [], { older: 10 }],
@@ -58,6 +58,7 @@ const CASES = [
   // 513 bytes of witness script, whose scriptCode takes a three-byte compact size
   ["an 8-of-15 sortedmulti", `sortedmulti(8,{o},{c0},{c0a},{c1},{c1a},{c2},${MORE.map((_, i) => `{m${i}}`).join(",")})`,
    ["c0", "c0a", "c1", "c1a", "c2", "m0", "m1"], null],
+  ["a 2-of-3 sortedmulti in P2SH-P2WSH", "sortedmulti(2,{o},{c0},{c1})", ["c0"], null, "sh"],
   ["ours on both paths, spent on the recovery path", "or_d(multi(2,{o},{c0},{c1}),and_v(v:multi(2,{o2},{c0a},{c1a}),older(10)))",
    ["c0a"], { older: 10 }],
 ];
@@ -97,14 +98,15 @@ mine(101);
 const pay = cli("-rpcwallet=miner", "getnewaddress");
 
 let failed = 0;
-for (const [name, policy, signs, lock] of CASES) {
+for (const [name, policy, signs, lock, wrap] of CASES) {
   const height = Number(cli("getblockcount"));
   const h = height + 3 + (lock?.after ?? 0); // after() set past the funding block, so the first try is early
   // public: every key public; signing: the cosigners Core signs for with their private keys
   const wsh = (signing, step) => {
     const keys = { o: `${pub(OURS)}/${step(0)}/*`, o2: `${pub(OURS)}/${step(2)}/*`, h };
     for (const [c, k] of Object.entries(COSIGNERS)) keys[c] = `${signing && signs.includes(c) ? k : pub(k)}/${step(0)}/*`;
-    return `wsh(${policy.replace(/\{(\w+)\}/g, (_, k) => keys[k])})`;
+    const w = `wsh(${policy.replace(/\{(\w+)\}/g, (_, k) => keys[k])})`;
+    return wrap ? `${wrap}(${w})` : w;
   };
   const wallet = (signing) => JSON.stringify([{ desc: withChecksum(wsh(signing, (s) => s)), range: [0, 0] }]);
   const registered = policy.includes("{o2}") ? wsh(false, (s) => `<${s};${s + 1}>`) : null;
