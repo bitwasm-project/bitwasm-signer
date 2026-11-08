@@ -305,8 +305,8 @@ public final class Parser {
         }
     }
 
-    /// Insert signatures and return the signed PSBT.
-    public func finalize(_ sigs: [Signature]) throws -> [UInt8] {
+    /// Insert signatures and return the signed PSBT; `trimmed`, only the unsigned transaction and the signatures.
+    public func finalize(_ sigs: [Signature], trimmed: Bool = false) throws -> [UInt8] {
         guard sigs.count <= L.maxSigs else {
             throw ParserError.badSignature("\(sigs.count) signatures, at most \(L.maxSigs): two for each input")
         }
@@ -330,7 +330,7 @@ public final class Parser {
                 $0.copyBytes(from: record)
             }
         }
-        let len = try call("parser_finalize", [.i32(UInt32(sigs.count))])
+        let len = try call(trimmed ? "parser_finalize_trimmed" : "parser_finalize", [.i32(UInt32(sigs.count))])
         if len < 0 { throw ParserError.parse(code: -len) }
         return try bytes(Int(try call("parser_output")), Int(len))
     }

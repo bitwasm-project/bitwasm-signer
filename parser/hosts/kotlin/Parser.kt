@@ -240,8 +240,8 @@ class Parser(parserWasm: ByteArray, sha256: String? = null) {
         }
     }
 
-    /** Insert signatures and return the signed PSBT. */
-    fun finalize(sigs: List<Signature>): ByteArray {
+    /** Insert signatures and return the signed PSBT; [trimmed], only the unsigned transaction and the signatures. */
+    fun finalize(sigs: List<Signature>, trimmed: Boolean = false): ByteArray {
         require(sigs.size <= L.MAX_SIGS) { "${sigs.size} signatures, at most ${L.MAX_SIGS}: two for each input" }
         for (s in sigs) {
             require(s.input in 0 until L.MAX_INPUTS && s.pubkey.size == 33 && s.sig.size <= 73) {
@@ -257,7 +257,7 @@ class Parser(parserWasm: ByteArray, sha256: String? = null) {
             memory.write(o + 34, byteArrayOf(s.sig.size.toByte()))
             memory.write(o + 35, s.sig)
         }
-        val len = call("parser_finalize", sigs.size.toLong())
+        val len = call(if (trimmed) "parser_finalize_trimmed" else "parser_finalize", sigs.size.toLong())
         if (len < 0) throw ParserException(-len)
         return bytes(call("parser_output"), len)
     }

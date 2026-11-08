@@ -35,7 +35,8 @@ before reading or writing — the module is untrusted from the host's point of v
 | `parser_prevtx_len` | `(i: i32) -> i32` | Its length, or `0` if the input has none |
 | `parser_sigs` | `() -> i32` | Offset of an array of 32 `plan_sig_t` the host fills in: at most two per input, the second only for P2WSH and another key |
 | `parser_finalize` | `(n: i32) -> i32` | Insert the first `n` signatures. Returns the signed PSBT length, or `-P_ERR_SIG` |
-| `parser_output` | `() -> i32` | Offset of the signed PSBT written by `parser_finalize` |
+| `parser_finalize_trimmed` | `(n: i32) -> i32` | The same, in a PSBT of only the unsigned transaction, each input's signatures and anti-exfil Qs, and empty output maps, as SeedSigner trims. A few KB however large the prevtxs |
+| `parser_output` | `() -> i32` | Offset of the signed PSBT written by `parser_finalize` or `parser_finalize_trimmed` |
 | `parser_nonces` | `() -> i32` | Anti-exfil: 16 x 33 bytes, per input `1` then the coordinator's `n`, for `signer_nonces` |
 | `parser_nonce_points` | `() -> i32` | Anti-exfil: 32 x 33 bytes the host fills from `signer_nonce_points`, aligned with `parser_sigs` |
 | `parser_ur_reset` | `() -> ()` | Drop decoder state before a new animated QR |

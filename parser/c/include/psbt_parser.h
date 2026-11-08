@@ -35,6 +35,8 @@ plan_sig_t *parser_sigs(void);
 /* Inserts the n signatures written to parser_sigs(), at most two per input with different keys, and returns the
  * signed PSBT length, or -P_ERR_SIG */
 int parser_finalize(unsigned int n);
+/* The same signatures in a PSBT of only the unsigned transaction and them, as SeedSigner trims what it shows */
+int parser_finalize_trimmed(unsigned int n);
 /* Anti-exfil. nonces: 16 x 33 bytes, per input, 1 then the coordinator's n from the proprietary field
  * {0xfc, 7, "bitwasm", 1}, for signer_nonces(). points: 32 x 33, one per signature: the host writes
  * signer_nonce_points() here before parser_finalize(), which adds each non-zero Q as {0xfc, 7, "bitwasm", 2,

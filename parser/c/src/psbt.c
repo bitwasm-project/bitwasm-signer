@@ -22,7 +22,7 @@ static plan_sig_t sigs[PLAN_MAX_SIGS];
 static uint8_t nonces[PLAN_MAX_INPUTS][33], points[PLAN_MAX_SIGS][33];
 static const uint8_t exfil_key[9] = {0xfc, 7, 'b', 'i', 't', 'w', 'a', 's', 'm'};
 static uint32_t prevtx_off[PLAN_MAX_INPUTS], prevtx_len[PLAN_MAX_INPUTS];
-static size_t in_map_end[PLAN_MAX_INPUTS];
+static size_t in_map_end[PLAN_MAX_INPUTS], utx_off, utx_len;
 static int parsed;
 
 typedef struct {
@@ -177,6 +177,7 @@ static int parse_global(rd_t *r) {
             plan.locktime = info.locktime;
             plan.n_inputs = (uint8_t)info.n_inputs;
             plan.n_outputs = (uint8_t)info.n_outputs;
+            utx_off = (size_t)(kv[i].val - in_buf), utx_len = kv[i].vlen;
             have_tx = 1;
         } else if (t == 0x01) {
             cand_t ignore = {0};
@@ -471,28 +472,34 @@ static size_t put_sig(size_t o, unsigned int i, unsigned int k) {
     return o;
 }
 
+/* Which of the n signatures go to which input, at most two per input; 0 if any cannot go in */
+static int pick_sigs(unsigned int n, int first[PLAN_MAX_INPUTS], int second[PLAN_MAX_INPUTS]) {
+    if (!parsed || n > PLAN_MAX_SIGS) return 0;
+    for (unsigned int i = 0; i < PLAN_MAX_INPUTS; i++) first[i] = second[i] = -1;
+    for (unsigned int k = 0; k < n; k++) {
+        const plan_sig_t *s = &sigs[k];
+        const plan_input_t *in;
+        if (s->input >= plan.n_inputs || second[s->input] >= 0) return 0;
+        in = &plan.inputs[s->input];
+        if (in->key.depth == 0) return 0;
+        /* a second one only where a witness script can hold two of our keys, and for the other key */
+        if (first[s->input] >= 0 && (!is_p2wsh(&in->spk) || !memcmp(sigs[first[s->input]].pubkey, s->pubkey, 33)))
+            return 0;
+        if (!is_p2tr(&in->spk) ? (s->pubkey[0] != 2 && s->pubkey[0] != 3) || s->sig_len < 9 || s->sig_len > 73
+                               : s->pubkey[0] != 0 || (s->sig_len != 64 && s->sig_len != 65))
+            return 0;
+        if (memcmp(points[k], (const uint8_t[33]){0}, 33) && points[k][0] != 2 && points[k][0] != 3) return 0;
+        *(first[s->input] < 0 ? &first[s->input] : &second[s->input]) = (int)k;
+    }
+    return 1;
+}
+
 /* Called after the host writes n signatures to parser_sigs(). Returns the signed PSBT length, or a negative value */
 int EXPORT(parser_finalize)(unsigned int n) {
     int first[PLAN_MAX_INPUTS], second[PLAN_MAX_INPUTS];
     size_t o = 0, prev = 0;
 
-    if (!parsed || n > PLAN_MAX_SIGS) return -P_ERR_SIG;
-    for (unsigned int i = 0; i < PLAN_MAX_INPUTS; i++) first[i] = second[i] = -1;
-    for (unsigned int k = 0; k < n; k++) {
-        const plan_sig_t *s = &sigs[k];
-        const plan_input_t *in;
-        if (s->input >= plan.n_inputs || second[s->input] >= 0) return -P_ERR_SIG;
-        in = &plan.inputs[s->input];
-        if (in->key.depth == 0) return -P_ERR_SIG;
-        /* a second one only where a witness script can hold two of our keys, and for the other key */
-        if (first[s->input] >= 0 && (!is_p2wsh(&in->spk) || !memcmp(sigs[first[s->input]].pubkey, s->pubkey, 33)))
-            return -P_ERR_SIG;
-        if (!is_p2tr(&in->spk) ? (s->pubkey[0] != 2 && s->pubkey[0] != 3) || s->sig_len < 9 || s->sig_len > 73
-                               : s->pubkey[0] != 0 || (s->sig_len != 64 && s->sig_len != 65))
-            return -P_ERR_SIG;
-        if (memcmp(points[k], (const uint8_t[33]){0}, 33) && points[k][0] != 2 && points[k][0] != 3) return -P_ERR_SIG;
-        *(first[s->input] < 0 ? &first[s->input] : &second[s->input]) = (int)k;
-    }
+    if (!pick_sigs(n, first, second)) return -P_ERR_SIG;
     for (unsigned int i = 0; i < plan.n_inputs; i++) {
         if (first[i] < 0) continue;
         memcpy(out_buf + o, in_buf + prev, in_map_end[i] - prev);
@@ -503,6 +510,35 @@ int EXPORT(parser_finalize)(unsigned int n) {
     }
     memcpy(out_buf + o, in_buf + prev, in_len - prev);
     o += in_len - prev;
+    return (int)o;
+}
+
+/* As parser_finalize, but only what a coordinator merges back, as SeedSigner trims: the unsigned transaction,
+ * each input's signatures and anti-exfil Qs, and empty output maps. A few KB where prevtxs made it tens */
+int EXPORT(parser_finalize_trimmed)(unsigned int n) {
+    static const uint8_t magic[5] = {'p', 's', 'b', 't', 0xff};
+    int first[PLAN_MAX_INPUTS], second[PLAN_MAX_INPUTS];
+    size_t o = 0;
+
+    if (!pick_sigs(n, first, second)) return -P_ERR_SIG;
+    memcpy(out_buf, magic, 5), o = 5;
+    out_buf[o++] = 1;
+    out_buf[o++] = 0x00;
+    if (utx_len < 0xfd) {
+        out_buf[o++] = (uint8_t)utx_len;
+    } else { /* below PSBT_MAX, so two bytes */
+        out_buf[o++] = 0xfd;
+        out_buf[o++] = (uint8_t)utx_len;
+        out_buf[o++] = (uint8_t)(utx_len >> 8);
+    }
+    memcpy(out_buf + o, in_buf + utx_off, utx_len), o += utx_len;
+    out_buf[o++] = 0;
+    for (unsigned int i = 0; i < plan.n_inputs; i++) {
+        if (first[i] >= 0) o = put_sig(o, i, (unsigned int)first[i]);
+        if (second[i] >= 0) o = put_sig(o, i, (unsigned int)second[i]);
+        out_buf[o++] = 0;
+    }
+    memset(out_buf + o, 0, plan.n_outputs), o += plan.n_outputs;
     return (int)o;
 }
 

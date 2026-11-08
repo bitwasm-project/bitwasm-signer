@@ -2,6 +2,7 @@ __data_end
 __heap_base
 memory
 parser_finalize
+parser_finalize_trimmed
 parser_input
 parser_input_cap
 parser_nonce_points

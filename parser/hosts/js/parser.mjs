@@ -23,6 +23,7 @@ const PLAN_SIZE = 13368;
  *   parser_prevtx_off: (i: number) => number,
  *   parser_prevtx_len: (i: number) => number,
  *   parser_finalize: (n: number) => number,
+ *   parser_finalize_trimmed: (n: number) => number,
  *   parser_nonces: () => number,
  *   parser_nonce_points: () => number,
  *   parser_ur_reset: () => void,
@@ -357,9 +358,11 @@ export class Parser {
 
   /**
    * Insert signatures and return the signed PSBT. A signature's anti-exfil `point` goes in as a proprietary field.
+   * `trimmed` returns only the unsigned transaction and the signatures, which a coordinator merges back.
    * @param {{input: number, pubkey: Uint8Array, sig: Uint8Array, point?: Uint8Array | null}[]} sigs
+   * @param {{trimmed?: boolean}} [options]
    */
-  finalize(sigs) {
+  finalize(sigs, { trimmed = false } = {}) {
     if (sigs.length > 32) throw new RangeError(`${sigs.length} signatures, at most 32: two for each of 16 inputs`);
     for (const s of sigs) {
       if (!(s.input >= 0 && s.input < 16) || s.pubkey.length !== 33 || s.sig.length > 73) {
@@ -380,7 +383,7 @@ export class Parser {
       this.mem[o + 34] = s.sig.length;
       this.mem.set(s.sig, o + 35);
     });
-    const len = this.exports.parser_finalize(sigs.length);
+    const len = (trimmed ? this.exports.parser_finalize_trimmed : this.exports.parser_finalize)(sigs.length);
     if (len < 0) throw new ParserError(-len);
     return this.#bytes(this.exports.parser_output(), len);
   }
