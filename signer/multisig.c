@@ -202,7 +202,8 @@ static int bsms(cur_t *c, int testnet, ms_wallet_t *w, char address[ADDRESS_MAX]
     if (!line(c, &l) || !descriptor(&l, testnet, w) || l.i != l.n) return 0;
     if (!line(c, &l) || (!eat(&l, "/0/*,/1/*") && !eat(&l, "No path restrictions")) || l.i != l.n) return 0;
     if (!line(c, &l) || l.n == 0 || l.n >= ADDRESS_MAX) return 0;
-    for (size_t i = 0; i < l.n; i++) address[i] = l.s[i] >= 'A' && l.s[i] <= 'Z' ? (char)(l.s[i] | 0x20) : l.s[i];
+    for (size_t i = 0; i < l.n; i++) /* base58 keeps its case */
+        address[i] = l.s[i] >= 'A' && l.s[i] <= 'Z' && !w->sh ? (char)(l.s[i] | 0x20) : l.s[i];
     address[l.n] = 0;
     while (line(c, &l))
         if (l.n) return 0;

@@ -208,6 +208,15 @@ void EXPORT(signer_unload)(void) {
     wipe(&multisig, sizeof(multisig));
     wipe(cbor, sizeof(cbor));
     wipe(words_out, sizeof(words_out));
+    wipe(in, sizeof(in));
+    wipe(xpub, sizeof(xpub));
+    wipe(desc, sizeof(desc));
+    wipe(address, sizeof(address));
+    wipe(&review, sizeof(review));
+    wipe(&facts, sizeof(facts));
+    wipe(nonces, sizeof(nonces));
+    wipe(filter, sizeof(filter));
+    wipe(prevtx, sizeof(prevtx));
 }
 
 unsigned int EXPORT(signer_fingerprint)(void) {

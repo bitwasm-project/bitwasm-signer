@@ -325,6 +325,7 @@ static void nested(void) {
 
     CHECK(load(SH) == CORE_OK && ms.kind == CORE_WALLET_SH && !strcmp(ms.receive, SH_RECEIVE0),
           "sh(wsh(sortedmulti())) and its first receive address: %s", ms.receive);
+    CHECK(load("BSMS 1.0\n" SH "\n/0/*,/1/*\n" SH_RECEIVE0 "\n") == CORE_OK, "BSMS with a base58 address");
     CHECK(!strcmp(ms.descriptor, SH "#" SH_SUM), "the descriptor with Core's checksum: %s", ms.descriptor);
     CHECK(core_multisig_address(1, 0, addr) == CORE_OK && !strcmp(addr, SH_CHANGE0), "change 0 is Core's: %s", addr);
     CHECK(core_multisig_find_address(SH_RECEIVE7, strlen(SH_RECEIVE7), 10) == 7, "receive 7 found");
@@ -361,6 +362,9 @@ static void nested(void) {
           "a P2SH-P2WSH input to sign, its change the wallet's");
     CHECK(core_sign(&p, NULL, sigs, &n) == CORE_OK && n == 1 && !memcmp(sigs[0].pubkey, ours, 33),
           "signed with our key in it");
+    CHECK(core_review(&p, NULL, &r) == CORE_OK && load(SH) == CORE_OK &&
+              core_sign(&p, NULL, sigs, &n) == CORE_ERR_NOT_REVIEWED,
+          "a wallet loaded after the review voids it");
     p.inputs[0].spk.len = (uint8_t)unhex(SH_RECEIVE0_P2WSH, p.inputs[0].spk.bytes);
     CHECK(core_review(&p, NULL, &r) == CORE_ERR_WALLET, "the same script as P2WSH, not the wallet registered");
     p = liana_plan(SH_CHANGE0_WS, SH_RECEIVE0_SPK, 0, SH_CHANGE0_SPK, 1);
