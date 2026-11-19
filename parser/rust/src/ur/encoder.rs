@@ -104,11 +104,16 @@ impl Encoder {
         self.data_len = len;
         self.head_len = if wrap { cbor_head(&mut self.head, 2, len as u64) } else { 0 };
         self.message_len = self.head_len + len;
-        self.frag_len = nominal_fragment_len(self.message_len, 10, max_fragment_len);
-        self.seq_len = (self.message_len + self.frag_len - 1) / self.frag_len;
-        if self.seq_len > MAX_SEQ_LEN {
+        if self.message_len == 0 {
             return Err(Err::Limit);
         }
+        self.frag_len = nominal_fragment_len(self.message_len, 10, max_fragment_len);
+        // next() trusts seq_len, so it stays 0 unless it fits the fragment tables
+        let seq_len = (self.message_len + self.frag_len - 1) / self.frag_len;
+        if seq_len > MAX_SEQ_LEN {
+            return Err(Err::Limit);
+        }
+        self.seq_len = seq_len;
         // CRC32 over the message that is never assembled
         let mut c: u32 = 0xffff_ffff;
         for i in 0..self.message_len {
