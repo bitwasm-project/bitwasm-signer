@@ -47,7 +47,7 @@ public enum ParserError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .parse(let c): return "P_ERR_" + (pErr.indices.contains(Int(c)) ? pErr[Int(c)] : "\(c)")
-        case .ur(let c): return "UR_ERR_" + (urErr.indices.contains(Int(-c)) ? urErr[Int(-c)] : "\(c)")
+        case .ur(let c): return "UR_ERR_" + (urErr.indices.contains(-Int(c)) ? urErr[-Int(c)] : "\(c)")
         case .outOfBounds(let o, let n): return "the module returned an offset outside its memory: \(o)+\(n)"
         case .unexpectedModule(let s): return s
         case .tooLarge(let s, let c): return "\(s) bytes does not fit in \(c)"

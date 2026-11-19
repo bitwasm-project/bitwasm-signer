@@ -214,6 +214,11 @@ int main(void) {
         for (long k = 0; same && k < len; k++) same = (text[k] | 32) == (REF_SINGLE_PART[k] | 32);
         CHECK(same, "encoder single part");
         CHECK(ur_encoder_next(text, 100) == UR_ERR_LIMIT, "encoder output limit");
+        static uint8_t big[12000];
+        CHECK(ur_encoder_start("bytes", big, sizeof(big), 1, 10) == UR_ERR_LIMIT &&
+                  ur_encoder_next(text, sizeof(text)) == UR_ERR_LIMIT,
+              "more parts than the tables hold, and nothing to write after");
+        CHECK(ur_encoder_start("bytes", msg, 0, 0, 100) == UR_ERR_LIMIT, "an empty message");
     }
 
     printf("%d/%d checks passed\n", checks - failures, checks);

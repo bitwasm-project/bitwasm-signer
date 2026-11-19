@@ -953,7 +953,7 @@ static int account_key(unsigned int purpose, uint32_t account, uint32_t path[4],
 int core_path_xpub(const uint32_t *path, unsigned int depth, char out[CORE_XPUB_MAX]) {
     uint8_t ser[78];
     memset(out, 0, CORE_XPUB_MAX);
-    if (!master_fp) return CORE_ERR_NO_SEED;
+    if (!seed_loaded) return CORE_ERR_NO_SEED;
     if (depth < 1 || depth > PLAN_MAX_DEPTH || electrum) return CORE_ERR_FORMAT;
     if (!path_key(path, depth, ser)) return CORE_ERR_CRYPTO;
     base58check_data(ser, sizeof(ser), out);
@@ -969,7 +969,7 @@ int core_account_xpub(unsigned int purpose, uint32_t account, char out[CORE_XPUB
     uint8_t ser[78];
     char fp[9], acct[11];
 
-    if (!master_fp) return CORE_ERR_NO_SEED;
+    if (!seed_loaded) return CORE_ERR_NO_SEED;
     if ((purpose != 44 && purpose != 48 && purpose != 49 && purpose != 84 && purpose != 86) || account >= H ||
         (electrum && (purpose != 84 || account)))
         return CORE_ERR_FORMAT;
@@ -1125,6 +1125,7 @@ int core_multisig_load_cbor(const uint8_t *cbor, size_t len, core_multisig_t *ou
 }
 
 void core_multisig_unload(void) {
+    reviewed = 0; /* the reviewed plan's change and second-key signatures came from the wallet then loaded */
     wipe(&wallet, sizeof(wallet));
     wallet_ours = wallet_ours2 = -1, wallet_watch = 0;
 }
@@ -1140,7 +1141,7 @@ int core_account_cbor(uint32_t account, uint8_t *out, size_t cap) {
     uint8_t ser[78];
 
     if (!seed_loaded) return -CORE_ERR_NO_SEED;
-    if (account >= H) return -CORE_ERR_FORMAT;
+    if (account >= H || electrum) return -CORE_ERR_FORMAT;
     cbor_head(&c, CBOR_MAP, 2);
     cbor_head(&c, CBOR_UINT, 1), cbor_head(&c, CBOR_UINT, master_fp);
     cbor_head(&c, CBOR_UINT, 2), cbor_head(&c, CBOR_ARRAY, 4);

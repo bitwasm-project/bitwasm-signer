@@ -464,9 +464,11 @@ long ur_encoder_start(const char *type, const uint8_t *data, size_t len, int wra
     e.data = data, e.data_len = len;
     e.head_len = wrap ? cbor_head(e.head, 2, len) : 0;
     e.message_len = e.head_len + len;
+    if (!e.message_len) return UR_ERR_LIMIT;
     e.frag_len = ur_nominal_fragment_len(e.message_len, 10, max_fragment_len);
+    /* ur_encoder_next() trusts seq_len, so it stays 0 unless it fits the fragment tables */
+    if ((e.message_len + e.frag_len - 1) / e.frag_len > UR_MAX_SEQ_LEN) return UR_ERR_LIMIT;
     e.seq_len = (e.message_len + e.frag_len - 1) / e.frag_len;
-    if (e.seq_len > UR_MAX_SEQ_LEN) return UR_ERR_LIMIT;
     for (size_t i = 0; i < e.message_len; i++) { /* ur_crc32() over the virtual message */
         c ^= message_byte(i);
         for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1)));

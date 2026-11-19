@@ -101,6 +101,12 @@ class Signer:
         if not all(isinstance(a, bytearray) for a in args):
             raise TypeError("secrets are bytearray, so that they can be cleared")
 
+    @staticmethod
+    def _wipe(*args):
+        for a in args:
+            if isinstance(a, bytearray):
+                a[:] = bytes(len(a))
+
     def init(self, testnet=False, strict_op_return=False, prevtx_optional=False):
         """Call once, before anything else. `testnet` also covers signet. `strict_op_return` refuses an OP_RETURN
         output not made of complete pushes (OP_RETURN), as Bitcoin Core will not relay it. `prevtx_optional` signs
@@ -128,8 +134,7 @@ class Signer:
             if not getattr(self._e, fn)(len(mnemonic), len(passphrase)):
                 raise RuntimeError(fn[7:] + " failed")
         finally:
-            mnemonic[:] = bytes(len(mnemonic))
-            passphrase[:] = bytes(len(passphrase))
+            self._wipe(mnemonic, passphrase)
         return self
 
     def seed_from_seedqr(self, payload: bytearray, passphrase: bytearray | None = None):
@@ -141,8 +146,7 @@ class Signer:
             if not self._e.signer_seed_from_seedqr(len(payload), len(passphrase)):
                 raise RuntimeError("seed_from_seedqr failed")
         finally:
-            payload[:] = bytes(len(payload))
-            passphrase[:] = bytes(len(passphrase))
+            self._wipe(payload, passphrase)
         return self
 
     def load_seed(self, seed: bytearray):
