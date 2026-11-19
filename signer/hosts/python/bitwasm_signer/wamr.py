@@ -25,6 +25,9 @@ def _load(path=None):
         ("wasm_memory_get_cur_page_count", c_uint64, [c_void_p]),
         ("wasm_memory_get_bytes_per_page", c_uint64, [c_void_p]),
         ("wasm_memory_get_base_address", c_void_p, [c_void_p]),
+        ("wasm_runtime_destroy_exec_env", None, [c_void_p]),
+        ("wasm_runtime_deinstantiate", None, [c_void_p]),
+        ("wasm_runtime_unload", None, [c_void_p]),
     ]:
         f = getattr(lib, name)
         f.restype, f.argtypes = res, args
@@ -34,6 +37,7 @@ def _load(path=None):
 
 
 _lib = None
+_lib_path = None
 
 
 class Instance:
@@ -41,8 +45,12 @@ class Instance:
     memory, valid for the instance's life because neither module can grow it."""
 
     def __init__(self, wasm: bytes, lib_path=None):
-        global _lib
-        _lib = _lib or _load(lib_path)
+        global _lib, _lib_path
+        if _lib is None:
+            _lib, _lib_path = _load(lib_path), lib_path
+        elif lib_path is not None and lib_path != _lib_path:
+            raise RuntimeError(f"libiwasm is already loaded from {_lib_path or 'the default path'}")
+        self._module = self._inst = self._env = None
         # WAMR keeps pointers into these bytes, so they live as long as the instance
         self._bytes = (c_uint8 * len(wasm)).from_buffer_copy(wasm)
         err = ctypes.create_string_buffer(256)
@@ -56,9 +64,21 @@ class Instance:
             raise RuntimeError(err.value.decode() or "WAMR instantiation failed")
         self._env = _lib.wasm_runtime_create_exec_env(self._inst, 16384)
         mem = _lib.wasm_runtime_get_default_memory(self._inst)
+        base = mem and _lib.wasm_memory_get_base_address(mem)
+        if not self._env or not base:
+            raise RuntimeError("WAMR could not set up the instance")
         size = _lib.wasm_memory_get_cur_page_count(mem) * _lib.wasm_memory_get_bytes_per_page(mem)
-        self.memory = memoryview((c_uint8 * size).from_address(_lib.wasm_memory_get_base_address(mem))).cast("B")
+        self.memory = memoryview((c_uint8 * size).from_address(base)).cast("B")
         self._funcs = {}
+
+    def __del__(self):  # __dict__, not getattr: __getattr__ would look the name up as an export
+        d = self.__dict__
+        if d.get("_env"):
+            _lib.wasm_runtime_destroy_exec_env(d["_env"])
+        if d.get("_inst"):
+            _lib.wasm_runtime_deinstantiate(d["_inst"])
+        if d.get("_module"):
+            _lib.wasm_runtime_unload(d["_module"])
 
     def __getattr__(self, name):
         """An export as a function of i32 arguments returning a signed i32."""

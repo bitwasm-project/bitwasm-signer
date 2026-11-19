@@ -107,7 +107,7 @@ export class Parser {
    *   refused. Take the value from the project's `checksums.txt` or a release's `SHA256SUMS`.
    */
   static async load(parserWasm, opts = {}) {
-    if (opts.sha256) await Parser.#assertDigest(parserWasm, opts.sha256);
+    if (opts.sha256 !== undefined) await Parser.#assertDigest(parserWasm, opts.sha256);
     const module = await WebAssembly.compile(parserWasm);
     Parser.#assertNoImports(module);
     return new Parser(await WebAssembly.instantiate(module, {}));
